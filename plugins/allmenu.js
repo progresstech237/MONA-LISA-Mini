@@ -28,7 +28,7 @@ const SECTIONS = [
     { key: 'tools', title: '🛠️ UTILITIES', match: ['tools', 'settings', 'general'] },
     { key: 'system', title: '🤖 BOT TOOLS', match: ['system', 'main'] },
     { key: 'owner', title: '🔐 OWNER ONLY', match: ['owner'] },
-    {'key:'economy',title: '⛏️ECONOMY👝', match: ['economy'] },
+    {key: 'economy', title: '⛏️ECONOMY👝', match: ['economy'] },
 ];
 
 const TAGLINES = [
