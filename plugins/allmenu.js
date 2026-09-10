@@ -15,7 +15,7 @@ const bootTime = Date.now();
 // beautiful display section. Anything unmatched falls into "Bot Tools".
 const SECTIONS = [
     { key: 'ai', title: '🧠 AI & INTELLIGENCE', match: ['ai'] },
-    { key: 'progresstech ai', title: '💎 PROGRESS TECH AI', match: ['progresstech-ai'] },
+    { key: 'progresstech ai', title: '💎 PROGRESS TECH AI', match: ['progresstech ai'] },
     { key: 'progresstech tools', title: '🔮 PROGRESS TECH TOOLS', match: ['progresstech tools'] },
     { key: 'stalk', title: '👁️ STALKER ZONE', match: ['stalk', 'stalker'] },
     { key: 'image', title: '🎨 IMAGE STUDIO', match: ['sticker', 'image'] },
@@ -28,6 +28,7 @@ const SECTIONS = [
     { key: 'tools', title: '🛠️ UTILITIES', match: ['tools', 'settings', 'general'] },
     { key: 'system', title: '🤖 BOT TOOLS', match: ['system', 'main'] },
     { key: 'owner', title: '🔐 OWNER ONLY', match: ['owner'] },
+    {'key:'economy',title: '⛏️ECONOMY👝', match: ['economy'] },
 ];
 
 const TAGLINES = [
