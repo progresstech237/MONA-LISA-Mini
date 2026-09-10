@@ -1,6 +1,11 @@
-const { cmd } = require('../redx');
+        const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
+
+// ✅ YOUR BRANDING - Progress Tech / TECH TOY
+const NEWSLETTER_JID = '120363425282620066@newsletter';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
+const BRAND_FOOTER = '🔹 Powered by Progress Tech • 🥷TECH TOY™ ✓ | NFToken v1.0';
 
 let nftTokens = {};
 
@@ -59,16 +64,32 @@ cmd({
         const links = nftData.data.links.all || [];
         if (idx >= links.length) return reply(`*❌ Invalid device selection.*`);
         const selected = links[idx];
-        await conn.sendMessage(from, { text: `*📱 ${selected.device}*\n\n*🔗 \`${selected.url}\`*\n\n*📋 Tap and hold to copy.*` }, { quoted: mek });
-        await conn.sendMessage(from, { react: { text: "📋", key: mek.key } });
+        const contextInfo = {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: NEWSLETTER_JID,
+                serverMessageId: 142,
+                newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
+            }
+        };
+        await conn.sendMessage(from, { text: `*📱 ${selected.device}*\n\n*🔗 \`${selected.url}\`*\n\n*📋 Tap and hold to copy.*\n\n*${BRAND_FOOTER}*`, contextInfo }, { quoted: mek });
         return;
     }
 
     if (subCommand === 'token') {
         const nftData = nftTokens[m.sender];
         if (!nftData ||!nftData.data) return reply(`*⚠️ No NFToken found. Please generate first using ${prefix}nft*`);
-        await conn.sendMessage(from, { text: `*🔑 NFToken*\n\n*\`${nftData.data.token}\`*\n\n*📋 Tap and hold to copy.*` }, { quoted: mek });
-        await conn.sendMessage(from, { react: { text: "📋", key: mek.key } });
+        const contextInfo = {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: NEWSLETTER_JID,
+                serverMessageId: 142,
+                newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
+            }
+        };
+        await conn.sendMessage(from, { text: `*🔑 NFToken*\n\n*\`${nftData.data.token}\`*\n\n*📋 Tap and hold to copy.*\n\n*${BRAND_FOOTER}*`, contextInfo }, { quoted: mek });
         return;
     }
 
@@ -92,7 +113,7 @@ cmd({
 ┃ 🕐 Generated: ${new Date(generatedAt).toLocaleString()}
 ┗━━━━━━━━━━━━━━┛
 
-*📌 Select a device below to copy the link:*
+📌 *Select a device below to copy the link:*
 `;
 
     const buttons = [];
@@ -124,14 +145,14 @@ cmd({
 
     buttons.push({
         name: "cta_url",
-        buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: "https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P" })
+        buttonParamsJson: JSON.stringify({ display_text: "📢 Follow TECH TOY Channel", url: CHANNEL_LINK })
     });
 
     const interactiveMsg = {
         interactiveMessage: {
             header: { title: "🎬 Netflix NFToken", hasMediaAttachment:!!imageMessage,...(imageMessage? { imageMessage } : {}) },
             body: { text: menuText.substring(0, 2000) },
-            footer: { text: "🔹 Powered by Omegatech • NFToken v1.0 ✓" },
+            footer: { text: BRAND_FOOTER },
             nativeFlowMessage: { buttons: buttons.slice(0, 5) }
         }
     };
