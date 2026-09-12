@@ -4,37 +4,127 @@ const fs = require('fs');
 
 const NEWSLETTER_JID = '120363425282620066@newsletter';
 const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
-const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
+const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY™ ✓';
 const API = 'https://api.omegatech.app/api/ai/wan';
 const SESSION_FILE = './data/wan-sessions.json';
 
-if (!fs.existsSync('./data')) fs.mkdirSync('./data', { recursive: true });
-function loadSessions() { try { if (fs.existsSync(SESSION_FILE)) return JSON.parse(fs.readFileSync(SESSION_FILE,'utf8')); } catch {} return {}; }
-function saveSessions(s) { try { fs.writeFileSync(SESSION_FILE, JSON.stringify(s, null, 2)); } catch {} }
+if (!fs.existsSync('./data')) fs.mkdirSync('./data',{recursive:true});
+const load=()=>{ try{ if(fs.existsSync(SESSION_FILE)) return JSON.parse(fs.readFileSync(SESSION_FILE,'utf8')); }catch{} return {}; };
+const save=(s)=>{ try{ fs.writeFileSync(SESSION_FILE, JSON.stringify(s,null,2)); }catch{} };
+let sessions=load();
 
-let sessions = loadSessions();
-
-function getThumb() {
-    try {
-        for (const p of ['./media/menu1.png','./media/menu2.png']) {
-            if (fs.existsSync(p)) return fs.readFileSync(p);
-        }
-        return null;
-    } catch { return null; }
-}
+function getThumb(){ try{ for(const p of ['./media/menu1.png','./media/menu2.png']) if(fs.existsSync(p)) return fs.readFileSync(p); }catch{} return null; }
 
 cmd({
-  pattern: "wan",
-  alias: ["wan22", "wanvideo", "wan2", "wan-ai"],
-  react: "🎬",
-  desc: "Generate AI videos using Wan 2.2 14B - polls if long job",
-  category: "progresstech ai",
+  pattern: "wan", alias: ["wan22","wanvideo"], react: "🎬",
+  desc: "Wan 2.2 14B video generation with polling", category: "progresstech ai",
   use: ".wan a cat dancing |.wan session <id> |.wan myjobs",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
-  try {
-    let rawQ = q || "";
-    const inter = mek.message?.interactiveResponseMessage;
+  try{
+    let rawQ=(q||"").trim();
+    try{
+      const p=JSON.parse(mek.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson||'{}');
+      if(p.id) rawQ=p.id.replace(prefix,"").trim();
+      const r=mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+      if(r) rawQ=r.replace(prefix,"").trim();
+    }catch{}
+    if(rawQ.startsWith(prefix)) rawQ=rawQ.replace(new RegExp(`^${prefix}[a-z0-9-]+\\s*`,'i'),'').trim();
+
+    const ctx={ forwardingScore:999, isForwarded:true, forwardedNewsletterMessageInfo:{ newsletterJid:NEWSLETTER_JID, serverMessageId:1, newsletterName:'🥷TECH TOY™ ✓' } };
+    const userKey=m.sender;
+
+    if(['myjobs','jobs','history'].includes(rawQ.toLowerCase())){
+      const jobs=sessions[userKey]||[];
+      if(jobs.length===0) return reply(`*No Wan jobs*\n${prefix}wan a cat astronaut\n${BRAND}`);
+      let list=jobs.map((j,i)=> `${i+1}. ${j.prompt.slice(0,50)}\n ID: ${j.sessionId.slice(0,40)}...\n ${j.url?'✅': '⏳'}`).join('\n\n');
+      return reply(`*🎬 Your Wan Jobs:*\n\n${list}\n\n${prefix}wan session <id> to poll\n${BRAND}`);
+    }
+
+    if(!rawQ || ['wan','menu'].includes(rawQ.toLowerCase())){
+      let thumb=null; try{ const { prepareWAMessageMedia }=require('@whiskeysockets/baileys'); const tb=getThumb(); if(tb){ const md=await prepareWAMessageMedia({image:tb},{upload:conn.waUploadToServer}); thumb=md.imageMessage; } }catch{}
+      const menu=`┏━━〔 🎬 Wan 2.2 14B 〕━━┓\n┃ Alibaba video model\n┃ ${prefix}wan a cat dancing in space\n┃ ${prefix}wan session <id> - poll\n┃ ${prefix}wan myjobs\n┗━━━━━━━━━━━━━━┛`;
+      return await conn.relayMessage(from,{ interactiveMessage:{ header:{title:"🎬 Wan 2.2 14B",hasMediaAttachment:!!thumb,...(thumb?{imageMessage:thumb}:{})}, body:{text:menu}, footer:{text:BRAND}, nativeFlowMessage:{ buttons:[
+        {name:"quick_reply",buttonParamsJson:JSON.stringify({display_text:"🎬 Generate",id:`${prefix}wan cinematic Mona Lisa afro singing 4k`})},
+        {name:"quick_reply",buttonParamsJson:JSON.stringify({display_text:"📜 My Jobs",id:`${prefix}wan myjobs`})},
+        {name:"cta_url",buttonParamsJson:JSON.stringify({display_text:"📢 Channel",url:CHANNEL_LINK})}
+      ] } }, contextInfo:ctx },{});
+    }
+
+    const isSessionPoll = /^[a-zA-Z0-9_-]{20,}$/.test(rawQ) && rawQ.length>20 &&!rawQ.includes(' ');
+    let prompt = isSessionPoll? '' : rawQ;
+    let sessionId = isSessionPoll? rawQ : null;
+    let videoUrl=null;
+
+    await conn.sendMessage(from,{react:{text:"🎬",key:mek.key}}).catch(()=>{});
+
+    if(!isSessionPoll){
+      reply(`*🎬 Wan Generating...*\n*Prompt:* ${prompt.slice(0,100)}\n\n_${BRAND}_`);
+      try{
+        const { data } = await axios.get(`${API}?prompt=${encodeURIComponent(prompt)}`, { timeout:120000, headers:{'User-Agent':'Mozilla/5.0'} });
+        videoUrl=data?.data?.url || data?.data?.video_url || data?.url || data?.video_url || data?.data?.result || data?.result;
+        sessionId=data?.data?.sessionId || data?.sessionId || data?.data?.job_id || data?.job_id || sessionId;
+        if(!videoUrl && typeof data?.data==='string' && data.data.startsWith('http')) videoUrl=data.data;
+      }catch(e){
+        console.log('Wan GET fail', e.message);
+        try{
+          const { data } = await axios.post(API, { prompt }, { timeout:120000, headers:{'Content-Type':'application/json','User-Agent':'Mozilla/5.0'} });
+          videoUrl=data?.data?.url || data?.url || data?.data?.video_url;
+          sessionId=data?.data?.sessionId || data?.sessionId || sessionId;
+        }catch{}
+      }
+    }
+
+    // Polling
+    if(!videoUrl && sessionId){
+      await conn.sendMessage(from,{ text:`*⏳ Long job*\nSession: \`${sessionId}\`\nPolling every 10s (5 mins)\n\n_${BRAND}_` }, {quoted:mek});
+      let attempts=0, max=30;
+      while(attempts<max &&!videoUrl){
+        attempts++; await new Promise(r=>setTimeout(r,10000));
+        try{
+          for(const url of [ `${API}?sessionId=${sessionId}`, `${API}?job_id=${sessionId}` ]){
+            try{
+              const { data } = await axios.get(url,{ timeout:30000, headers:{'User-Agent':'Mozilla/5.0'} });
+              const v=data?.data?.url || data?.url || data?.data?.video_url || data?.data?.result || data?.result;
+              if(v && typeof v==='string' && v.startsWith('http')){ videoUrl=v; break; }
+              if(data?.data?.status==='completed' && data?.data?.url){ videoUrl=data.data.url; break; }
+            }catch{}
+            if(videoUrl) break;
+          }
+          if(!videoUrl){
+            const { data } = await axios.post(API, { sessionId, action:'poll' }, { timeout:30000, headers:{'Content-Type':'application/json','User-Agent':'Mozilla/5.0'} }).catch(()=>({data:{}}));
+            const v=data?.data?.url || data?.url || data?.data?.video_url;
+            if(v) videoUrl=v;
+          }
+          if(attempts%3===0 &&!videoUrl) await conn.sendMessage(from,{ text:`*⏳ Still processing ${attempts*10}s*\n\`${sessionId.slice(0,30)}...\`\n${prefix}wan session ${sessionId}` }, {quoted:mek});
+        }catch{}
+      }
+    }
+
+    if(!videoUrl){
+      if(!sessions[userKey]) sessions[userKey]=[];
+      sessions[userKey].push({ prompt: prompt||'poll', sessionId: sessionId||rawQ, url:null, time:Date.now() });
+      if(sessions[userKey].length>10) sessions[userKey]=sessions[userKey].slice(-10);
+      save(sessions);
+      throw new Error(`Still processing.\nSession: ${sessionId||rawQ}\nPoll: ${prefix}wan session ${sessionId||rawQ}`);
+    }
+
+    if(!sessions[userKey]) sessions[userKey]=[];
+    sessions[userKey].push({ prompt: prompt||'polled', sessionId: sessionId||'direct', url:videoUrl, time:Date.now() });
+    if(sessions[userKey].length>10) sessions[userKey]=sessions[userKey].slice(-10);
+    save(sessions);
+
+    await conn.sendMessage(from,{
+      video:{ url: videoUrl },
+      caption:`*✅ Wan 2.2 Generated*\n*Prompt:* ${prompt||'Polled'}\n*Session:* \`${(sessionId||'direct').slice(0,50)}\`\n\n*${BRAND}*`,
+      contextInfo:ctx
+    },{quoted:mek});
+    await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
+  }catch(e){
+    console.error('Wan Error:', e.response?.data||e.message);
+    reply(`*❌ Wan Failed*\n${e.message}\n\n${'.wan session <sessionId>'}`);
+  }
+});    const inter = mek.message?.interactiveResponseMessage;
     if (inter?.nativeFlowResponseMessage?.paramsJson) {
         try {
             const p = JSON.parse(inter.nativeFlowResponseMessage.paramsJson);
