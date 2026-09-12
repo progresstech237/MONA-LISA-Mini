@@ -7,21 +7,51 @@ const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API_BASE = 'https://api.omegatech.app/api/ai/Ai';
 
-function getThumb() {
+function getThumbBuffer() {
     try {
         for (const p of ['./media/menu1.png','./media/menu2.png','./media/menu3.png']) {
             if (fs.existsSync(p)) return fs.readFileSync(p);
         }
-        return null;
-    } catch { return null; }
+    } catch {}
+    return null;
 }
 
-async function downloadQuotedImage(mek, conn) {
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const msg = quoted?.imageMessage || mek.message?.imageMessage;
-    if (!msg) return null;
-    const buffer = await conn.downloadMediaMessage({ message: { imageMessage: msg } });
-    return buffer;
+function cleanQuery(raw, prefix, patterns) {
+    let q = (raw || "").trim();
+    if (!q) return "";
+    try {
+        const inter = raw;
+        if (typeof inter === 'string' && inter.startsWith(prefix)) {
+            q = inter.slice(prefix.length).trim();
+            q = q.replace(new RegExp(`^(${patterns.join('|')})\\b\\s*`, 'i'), '').trim();
+        }
+    } catch {}
+    return q;
+}
+
+// ROBUST: Works for image, viewOnce image, quoted image, sticker as image
+async function getQuotedOrOwnImage(mek, conn) {
+    try {
+        const ctx = mek.message?.extendedTextMessage?.contextInfo;
+        const quoted = ctx?.quotedMessage;
+
+        let targetMsg = null;
+        
+        // 1. Quoted image
+        if (quoted?.imageMessage) targetMsg = { imageMessage: quoted.imageMessage };
+        else if (quoted?.viewOnceMessageV2?.message?.imageMessage) targetMsg = { imageMessage: quoted.viewOnceMessageV2.message.imageMessage };
+        else if (quoted?.viewOnceMessage?.message?.imageMessage) targetMsg = { imageMessage: quoted.viewOnceMessage.message.imageMessage };
+        // 2. Own image (user sent .aimedia with image)
+        else if (mek.message?.imageMessage) targetMsg = { imageMessage: mek.message.imageMessage };
+        else if (mek.message?.viewOnceMessageV2?.message?.imageMessage) targetMsg = { imageMessage: mek.message.viewOnceMessageV2.message.imageMessage };
+
+        if (!targetMsg) return null;
+        const buffer = await conn.downloadMediaMessage({ message: targetMsg }, 'buffer', {}, { reuploadRequest: conn.updateMediaMessage });
+        return buffer;
+    } catch (e) {
+        console.log("Download image error:", e.message);
+        return null;
+    }
 }
 
 cmd({
@@ -30,23 +60,25 @@ cmd({
   react: "🎨",
   desc: "Multi-function AI media tool - Progress Tech",
   category: "progresstech ai",
-  use: ".aimedia text cat in space | .aimedia removebg (reply to image) | .aimedia enhance (reply)",
+  use: ".aimedia text cat in space | reply image .aimedia removebg",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
+  const senderId = m?.sender || mek?.key?.participant || from;
   try {
     let rawQ = q || "";
-    // Fix button clicks
-    const inter = mek.message?.interactiveResponseMessage;
-    if (inter?.nativeFlowResponseMessage?.paramsJson) {
-        try {
-            const p = JSON.parse(inter.nativeFlowResponseMessage.paramsJson);
-            if (p.id) rawQ = p.id.replace(prefix,"").trim();
-        } catch {}
+    try {
+        const p1 = mek.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+        if (p1) { const j = JSON.parse(p1); if (j.id) rawQ = j.id; }
+        const p2 = mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+        if (p2) rawQ = p2;
+    } catch {}
+
+    // Clean properly
+    let cleaned = (rawQ || "").trim();
+    if (cleaned.startsWith(prefix)) {
+        cleaned = cleaned.slice(prefix.length).trim();
+        cleaned = cleaned.replace(/^(aimedia|ai|aitool|mediaai|genimg|txt2img|removebg|enhance)\b\s*/i, '').trim();
     }
-    if (mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId) {
-        rawQ = mek.message.listResponseMessage.singleSelectReply.selectedRowId.replace(prefix,"").trim();
-    }
-    if (rawQ.startsWith(prefix)) rawQ = rawQ.replace(new RegExp(`^${prefix}[a-z-]+\\s*`, 'i'), '').trim();
 
     const ctx = {
         forwardingScore: 999, isForwarded: true,
@@ -57,45 +89,40 @@ cmd({
         }
     };
 
-    if (!rawQ || rawQ.toLowerCase() === 'help' || rawQ.toLowerCase() === 'login' || rawQ.toLowerCase() === 'menu') {
-        let thumb = null;
+    if (!cleaned || ['help','menu','login'].includes(cleaned.toLowerCase())) {
+        let thumbMsg = null;
         try {
             const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
-            const tb = getThumb();
-            if (tb) {
-                const media = await prepareWAMessageMedia({ image: tb }, { upload: conn.waUploadToServer });
-                thumb = media.imageMessage;
+            const buf = getThumbBuffer();
+            if (buf) {
+                const media = await prepareWAMessageMedia({ image: buf }, { upload: conn.waUploadToServer });
+                thumbMsg = media.imageMessage;
             }
         } catch {}
 
         const menu = `┏━━〔 🎨 AI Media Tool 〕━━┓
-┃ Multi-function AI
-┃ text-to-image, img-to-video,
-┃ enhance, removebg, retouch,
-┃ flux-edit, unwatermark, variation
+┃ text-to-image, enhance,
+┃ removebg, retouch, flux-edit
 ┃
-┃ *How to use:*
+┃ *Usage:*
 ┃ ${prefix}aimedia cat in space
-┃ ${prefix}aimedia flux-edit; make it cyberpunk
-┃ ${prefix}aimedia enhance (reply image)
-┃ ${prefix}aimedia removebg (reply image)
-┃ ${prefix}aimedia retouch (reply image)
-┃ ${prefix}aimedia unwatermark (reply image)
-┃ ${prefix}aimedia variation (reply image)
-┃ ${prefix}aimedia img2vid; slow zoom (reply image)
-┗━━━━━━━━━━━━━━┛
-`;
+┃ ${prefix}aimedia flux-edit; make it cyberpunk (reply img)
+┃ ${prefix}aimedia enhance (reply to image)
+┃ ${prefix}aimedia removebg (reply to image)
+┃ ${prefix}aimedia retouch (reply)
+┃ ${prefix}aimedia unwatermark (reply)
+┗━━━━━━━━━━━━━━┛`;
 
         const buttons = [
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🖼️ Text to Image", id: `${prefix}aimedia a beautiful Mona Lisa afro girl, omah lay album cover` }) },
+            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🖼️ Text to Image", id: `${prefix}aimedia a beautiful Mona Lisa afro girl` }) },
             { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "✂️ Remove BG", id: `${prefix}aimedia removebg` }) },
             { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "✨ Enhance", id: `${prefix}aimedia enhance` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎬 Img to Video", id: `${prefix}aimedia img2vid` }) }
+            { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: CHANNEL_LINK }) }
         ];
 
         return await conn.relayMessage(from, {
             interactiveMessage: {
-                header: { title: "🎨 AI Media • Progress Tech", hasMediaAttachment: !!thumb, ...(thumb ? { imageMessage: thumb } : {}) },
+                header: { title: "🎨 AI Media • Progress Tech", hasMediaAttachment:!!thumbMsg,...(thumbMsg? { imageMessage: thumbMsg } : {}) },
                 body: { text: menu },
                 footer: { text: BRAND },
                 nativeFlowMessage: { buttons }
@@ -104,99 +131,116 @@ cmd({
         }, {});
     }
 
-    // Parse action
+    // --- Parse Action ---
     let action = "text-to-image";
-    let prompt = rawQ;
+    let prompt = cleaned;
+    const lower = cleaned.toLowerCase();
 
-    const lower = rawQ.toLowerCase();
-    if (lower.startsWith('removebg') || lower.startsWith('remove bg')) { action = 'remove-background'; prompt = rawQ.replace(/removebg|remove background/i,'').trim(); }
-    else if (lower.startsWith('enhance')) { action = 'enhance'; prompt = rawQ.replace(/enhance/i,'').trim(); }
-    else if (lower.startsWith('retouch')) { action = 'retouch'; prompt = rawQ.replace(/retouch/i,'').trim(); }
-    else if (lower.startsWith('unwatermark')) { action = 'unwatermark'; prompt = rawQ.replace(/unwatermark/i,'').trim(); }
-    else if (lower.startsWith('variation')) { action = 'image-variation'; prompt = rawQ.replace(/variation/i,'').trim(); }
-    else if (lower.startsWith('img2vid') || lower.startsWith('image-to-video')) { action = 'image-to-video'; prompt = rawQ.replace(/img2vid|image-to-video/i,'').trim().replace(/^;|:|-/,'').trim(); }
-    else if (lower.startsWith('flux-edit') || lower.startsWith('edit')) { action = 'flux-edit'; prompt = rawQ.replace(/flux-edit|edit/i,'').trim().replace(/^;|:|-/,'').trim(); }
-    else { action = 'text-to-image'; }
-
-    if (action === 'text-to-image' && !prompt) prompt = rawQ;
-
-    await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
-    reply(`*🎨 ${action.toUpperCase()} processing...*\nPrompt: ${prompt.slice(0,100) || 'image input'}\n\n_${BRAND}_`);
-
-    let imageBuffer = null;
-    let imageBase64 = null;
-    
-    // If action needs image, try to get quoted image
-    if (['remove-background','enhance','retouch','unwatermark','image-variation','image-to-video','flux-edit'].includes(action)) {
-        try {
-            const buf = await downloadQuotedImage(mek, conn);
-            if (buf) {
-                imageBuffer = buf;
-                imageBase64 = buf.toString('base64');
-            } else if (action !== 'flux-edit') {
-                return reply(`*❌ Reply to an image* for ${action}\nExample: reply image with ${prefix}aimedia ${action}`);
-            }
-        } catch (e) { console.log('No image found'); }
+    if (lower.startsWith('removebg') || lower.startsWith('remove bg') || lower.startsWith('rmbg')) {
+        action = 'remove-background'; prompt = cleaned.replace(/removebg|remove background|rmbg/i,'').trim();
+    } else if (lower.startsWith('enhance')) {
+        action = 'enhance'; prompt = cleaned.replace(/enhance/i,'').trim();
+    } else if (lower.startsWith('retouch')) {
+        action = 'retouch'; prompt = cleaned.replace(/retouch/i,'').trim();
+    } else if (lower.startsWith('unwatermark')) {
+        action = 'unwatermark'; prompt = cleaned.replace(/unwatermark/i,'').trim();
+    } else if (lower.startsWith('variation')) {
+        action = 'image-variation'; prompt = cleaned.replace(/variation/i,'').trim();
+    } else if (lower.startsWith('img2vid') || lower.startsWith('image-to-video') || lower.startsWith('tovid')) {
+        action = 'image-to-video'; prompt = cleaned.replace(/img2vid|image-to-video|tovid/i,'').trim().replace(/^[:;\-]\s*/,'').trim();
+    } else if (lower.startsWith('flux-edit') || lower.startsWith('flux edit') || lower.startsWith('edit;') || lower.startsWith('edit ')) {
+        action = 'flux-edit'; prompt = cleaned.replace(/flux-edit|flux edit|edit/i,'').trim().replace(/^[:;\-]\s*/,'').trim();
     }
 
-    // Build payload for POST - OmegaTech pattern
+    if (!prompt && action === 'text-to-image') prompt = cleaned;
+    if (!prompt) prompt = action === 'text-to-image' ? cleaned : "enhance image quality";
+
+    try { await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } }); } catch {}
+
+    // --- Image Required Check ---
+    const needsImage = ['remove-background','enhance','retouch','unwatermark','image-variation','image-to-video','flux-edit'].includes(action);
+    let imageBuffer = null;
+
+    if (needsImage) {
+        imageBuffer = await getQuotedOrOwnImage(mek, conn);
+        if (!imageBuffer) {
+            return await reply(`*❌ Reply to an image* for *${action}*\n\nExample:\nSend image with caption: *${prefix}aimedia ${action}*\nOr reply to image with *${prefix}aimedia ${action}*\n\n${BRAND}`);
+        }
+    }
+
+    await reply(`*🎨 ${action.toUpperCase()} processing...*\nPrompt: ${prompt.slice(0,120) || 'image input'}\n\n_${BRAND}_`);
+
+    // --- Build Payload (NO data:image prefix - that breaks API) ---
     let payload = {
         action: action,
-        prompt: prompt || "enhance image",
-        text: prompt,
-        mode: action
+        mode: action,
+        prompt: prompt,
+        text: prompt
     };
 
-    if (imageBase64) {
-        payload.image = `data:image/jpeg;base64,${imageBase64}`;
-        payload.image_base64 = imageBase64;
-        payload.url = payload.image;
+    // Send image as base64 ONLY if needed - without data: prefix for stability
+    if (imageBuffer) {
+        payload.image_base64 = imageBuffer.toString('base64');
+        payload.image = payload.image_base64; // some APIs expect 'image'
     }
 
-    const { data } = await axios.post(API_BASE, payload, {
-        timeout: 120000,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    let resultUrl = null;
+    let resultBase64 = null;
 
-    const resultUrl = data.data?.url || data.data?.image_url || data.data?.result || data.url || data.result || data.image_url;
-    const resultBase64 = data.data?.base64 || data.data?.image_base64;
+    try {
+        const { data } = await axios.post(API_BASE, payload, {
+            timeout: 120000,
+            headers: { 'Content-Type': 'application/json' },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
+        });
 
-    if (!resultUrl && !resultBase64) {
-        console.log('AI Media raw:', JSON.stringify(data).slice(0,1000));
-        // Try GET fallback
-        const getUrl = `${API_BASE}?action=${encodeURIComponent(action)}&prompt=${encodeURIComponent(prompt)}`;
-        const { data: getData } = await axios.get(getUrl, { timeout: 90000 });
-        const url2 = getData.data?.url || getData.url || getData.data?.result;
-        if (!url2) throw new Error('No image URL returned from API');
-        
-        if (action === 'image-to-video') {
-            await conn.sendMessage(from, { video: { url: url2 }, caption: `*🎬 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
-        } else {
-            await conn.sendMessage(from, { image: { url: url2 }, caption: `*🎨 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
+        resultUrl = data.data?.url || data.data?.image_url || data.data?.result || data.url || data.result || data.image_url;
+        resultBase64 = data.data?.base64 || data.data?.image_base64 || data.base64;
+
+        if (!resultUrl && !resultBase64) {
+            console.log('POST empty, trying GET fallback. Raw:', JSON.stringify(data).slice(0,800));
+            throw new Error('no_url');
         }
-        return;
+    } catch (e) {
+        // GET fallback for text-to-image only
+        if (action === 'text-to-image' && !imageBuffer) {
+            try {
+                const getUrl = `${API_BASE}?action=${encodeURIComponent(action)}&prompt=${encodeURIComponent(prompt)}&text=${encodeURIComponent(prompt)}`;
+                const { data: getData } = await axios.get(getUrl, { timeout: 90000 });
+                resultUrl = getData.data?.url || getData.url || getData.data?.result || getData.result;
+            } catch (ge) {
+                console.log("GET fallback failed:", ge.message);
+                throw e;
+            }
+        } else {
+            throw e;
+        }
     }
 
-    if (action === 'image-to-video') {
-        if (resultBase64) {
-            const buf = Buffer.from(resultBase64, 'base64');
-            await conn.sendMessage(from, { video: buf, caption: `*🎬 Generated*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
+    if (resultBase64 && !resultUrl) {
+        const buf = Buffer.from(resultBase64, 'base64');
+        if (action === 'image-to-video') {
+            await conn.sendMessage(from, { video: buf, caption: `*🎬 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
         } else {
-            await conn.sendMessage(from, { video: { url: resultUrl }, caption: `*🎬 Generated*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
+            await conn.sendMessage(from, { image: buf, caption: `*🎨 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
+        }
+    } else if (resultUrl) {
+        if (action === 'image-to-video') {
+            await conn.sendMessage(from, { video: { url: resultUrl }, caption: `*🎬 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
+        } else {
+            await conn.sendMessage(from, { image: { url: resultUrl }, caption: `*🎨 ${action}*\n${prompt}\n*${BRAND}*`, contextInfo: ctx }, { quoted: mek });
         }
     } else {
-        if (resultBase64) {
-            const buf = Buffer.from(resultBase64, 'base64');
-            await conn.sendMessage(from, { image: buf, caption: `*🎨 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
-        } else {
-            await conn.sendMessage(from, { image: { url: resultUrl }, caption: `*🎨 ${action}*\n${prompt}\n${BRAND}`, contextInfo: ctx }, { quoted: mek });
-        }
+        throw new Error('No image returned from API');
     }
 
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+    try { await conn.sendMessage(from, { react: { text: "✅", key: mek.key } }); } catch {}
 
   } catch (e) {
-    console.error('AI Media Error:', e.response?.data || e.message);
-    reply(`*❌ AI Media Failed*\n${e.response?.data?.message || e.message}\n\nUsage:\n${prefix}aimedia a cat in space\nReply image with ${prefix}aimedia removebg`);
+    console.error('AI MEDIA ERROR:', e.response?.data || e.stack);
+    const msg = e.response?.data ? JSON.stringify(e.response.data).slice(0,400) : e.message;
+    await reply(`*❌ AI Media Failed*\n${msg}\n\nUsage:\n${prefix}aimedia a cat in space\nReply image with ${prefix}aimedia removebg\n\n${BRAND}`);
+    try { await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); } catch {}
   }
 });
