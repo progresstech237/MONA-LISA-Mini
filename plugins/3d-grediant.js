@@ -21,7 +21,7 @@ cmd({
   alias: ["3dg", "ephoto3d", "gradient3d", "3dtext"],
   react: "🌈",
   desc: "Generate 3D gradient style text logo - Ephoto",
-  category: "progresstech maker",
+  category: "progresstech ai",
   use: ".3dgradient Progress Tech |.3dgradient Mona Lisa |.3dgradient TECH TOY",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
