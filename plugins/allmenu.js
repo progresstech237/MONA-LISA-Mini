@@ -26,6 +26,7 @@ const SECTIONS = [
     { key: 'fun', title: '😄 FUN & GAMES', match: ['fun', 'games'] },
     { key: 'group', title: '👥 GROUP MANAGER', match: ['group', 'admin'] },
     { key: 'tools', title: '🛠️ UTILITIES', match: ['tools', 'settings', 'general'] },
+    { key: 'hacking tools', title: '👨‍💻 HACKING TOOLS 👾😈', match: ['hacking tools'] },
     { key: 'system', title: '🤖 BOT TOOLS', match: ['system', 'main'] },
     { key: 'owner', title: '🔐 OWNER ONLY', match: ['owner'] },
     {key: 'economy', title: '⛏️ECONOMY👝', match: ['economy'] },
