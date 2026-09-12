@@ -1,181 +1,143 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const fs = require('fs');
 
-let bananaSession = {};
+const BRAND = '👑 By MONA LISA MINI BOT';
+const SESS_FILE = './data/nanopro.json';
+if(!fs.existsSync('./data')) fs.mkdirSync('./data',{recursive:true});
+let bananaSession={};
+try{ if(fs.existsSync(SESS_FILE)) bananaSession=JSON.parse(fs.readFileSync(SESS_FILE,'utf8')); }catch{}
+function saveSess(){ try{ fs.writeFileSync(SESS_FILE, JSON.stringify(bananaSession,null,2)); }catch{} }
 
-async function uploadMedia(m) {
-    try {
-        const q = m.quoted? m.quoted : m;
-        const mime = q.mimetype || q.msg?.mimetype || "";
-        if (!/image/.test(mime)) return null;
-        const media = await q.download();
-        const form = new FormData();
-        form.append('file', media, { filename: 'image.jpg' });
-        form.append('type', 'permanent');
-        const res = await axios.post('https://tmp.malvryx.dev/upload', form, {
-            headers: form.getHeaders()
-        });
-        return res.data?.cdnUrl || res.data?.directUrl || null;
-    } catch (e) {
-        return null;
-    }
+async function getBuffer(m){
+  try{
+    let msg=m.quoted? m.quoted : m;
+    if(msg.msg) msg=msg.msg;
+    if(msg.message) msg=msg.message;
+    let type=Object.keys(msg)[0]; let content=msg[type];
+    if(type==='viewOnceMessageV2'||type==='viewOnceMessage'){ content=content.message; type=Object.keys(content)[0]; content=content[type]; }
+    let mediaType=type.replace('Message','');
+    const stream=await downloadContentFromMessage(content, mediaType);
+    let buf=Buffer.from([]);
+    for await(const c of stream) buf=Buffer.concat([buf,c]);
+    return buf;
+  }catch{ return null; }
 }
 
-// ============ NANO - Text to Image & Image Edit ============
+async function uploadMedia(m){
+  try{
+    const buf=await getBuffer(m);
+    if(!buf) return null;
+    // try tmp -> fallback catbox
+    try{
+      const form=new FormData();
+      form.append('file', buf, { filename:'image.jpg' });
+      const res=await axios.post('https://tmp.malvryx.dev/upload', form, { headers:form.getHeaders(), timeout:30000 });
+      return res.data?.cdnUrl||res.data?.directUrl||null;
+    }catch{
+      const form2=new FormData();
+      form2.append('reqtype','fileupload');
+      form2.append('fileToUpload', buf, { filename:'image.jpg' });
+      const res2=await axios.post('https://catbox.moe/user/api.php', form2, { headers:form2.getHeaders(), timeout:30000 });
+      if(typeof res2.data==='string' && res2.data.startsWith('http')) return res2.data.trim();
+      return null;
+    }
+  }catch(e){ console.log('upload fail', e.message); return null; }
+}
+
 cmd({
-  pattern: "nano",
-  alias: ["nana", "nanobana"],
-  react: "🍌",
-  desc: "Generate or edit image with Nano-Banana AI",
-  category: "progresstech ai",
-  use: ".nano <prompt> | reply to image.nano <prompt>",
-  filename: __filename
+  pattern:"nano", alias:["nana","nanobana"], react:"🍌",
+  desc:"Nano banana - txt2img & img edit", category:"progresstech ai",
+  use:".nano prompt | reply image.nano prompt",
+  filename:__filename
 }, async (conn, mek, m, { from, q, reply }) => {
-  try {
-    const prompt = q || m.quoted?.text || m.msg?.caption || "";
-    const imageUrl = await uploadMedia(m);
+  try{
+    const prompt=q||m.quoted?.text||m.msg?.caption||"";
+    const imageUrl=await uploadMedia(m);
 
-    // IMAGE EDIT MODE
-    if (imageUrl) {
-      if (!prompt) {
-        return reply(`*🍌 You want to edit an image?*\n\n*Reply to an image and type:*\n*👑.nano make it zombie 👑*`);
+    if(imageUrl){
+      if(!prompt) return reply(`*🍌 Reply image with prompt*\n*.nano make it zombie*`);
+      await conn.sendMessage(from,{react:{text:"🎨",key:mek.key}}).catch(()=>{});
+      reply(`*🍌 Editing... Please wait*`);
+      const { data:init } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2`, { params:{ prompt, image:imageUrl }, timeout:60000, headers:{'User-Agent':'Mozilla/5.0'} });
+      if(!init.task_id) throw new Error('No task_id');
+      let resultUrl=null;
+      for(let i=0;i<20;i++){
+        await new Promise(r=>setTimeout(r,5000));
+        const { data:check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result`, { params:{ task_id:init.task_id }, timeout:30000, headers:{'User-Agent':'Mozilla/5.0'} });
+        if(check.status==='completed'){ resultUrl=check.image_url; break; }
+        if(check.status==='failed') throw new Error('Generation failed');
       }
-
-      await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
-      reply(`*🍌 Editing your image... Please wait ☺️*`);
-
-      const { data: init } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2?prompt=${encodeURIComponent(prompt)}&image=${encodeURIComponent(imageUrl)}`);
-
-      let resultUrl = null;
-      for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 5000));
-        const { data: check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result?task_id=${init.task_id}`);
-        if (check.status === 'completed') {
-          resultUrl = check.image_url;
-          break;
-        }
-      }
-
-      if (resultUrl) {
-        await conn.sendMessage(from, {
-          image: { url: resultUrl },
-          caption: `*🍌 NANO EDIT SUCCESS 👑*\n\n*📝 Prompt: ${prompt}*\n*👑 By: MONA LISA MINI BOT 👑*`
-        }, { quoted: mek });
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-      } else {
-        reply(`*❌ Edit timed out. Please try again.*`);
-      }
+      if(resultUrl){
+        await conn.sendMessage(from,{ image:{ url:resultUrl }, caption:`*🍌 NANO EDIT SUCCESS*\n*📝 ${prompt}*\n*${BRAND}*` },{quoted:mek});
+        await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
+      }else reply(`*❌ Edit timed out. Try again.*`);
       return;
     }
 
-    // TEXT TO IMAGE MODE
-    if (!prompt) {
-      return reply(`*🍌 Want to generate AI image?*\n\n*Type like this:*\n*👑.nano a cute cat 👑*\n\n*To edit an image, reply to an image and type:*\n*👑.nano make it cartoon 👑*`);
-    }
+    if(!prompt) return reply(`*🍌 Text to image:*\n*.nano a cute cat*\n\n*Edit: reply image.nano make cartoon*`);
 
-    await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-    reply(`*🍌 Generating your image... Please wait ☺️*`);
-
-    const { data } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana-pro?prompt=${encodeURIComponent(prompt)}`);
-
-    if (data.image) {
-      await conn.sendMessage(from, {
-        image: { url: data.image },
-        caption: `*🍌 NANO PRO GENERATION 👑*\n\n*📝 Prompt: ${prompt}*\n*👑 By: MONA LISA MINI BOT 👑*`
-      }, { quoted: mek });
-      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-    } else {
-      reply(`*❌ No image generated. Please try again.*`);
-    }
-
-  } catch (e) {
-    console.log("NANO ERROR:", e);
-    reply(`*❌ Error occurred:*\n*${e.message}*`);
+    await conn.sendMessage(from,{react:{text:"⏳",key:mek.key}}).catch(()=>{});
+    reply(`*🍌 Generating...*`);
+    const { data } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana-pro`, { params:{ prompt }, timeout:60000, headers:{'User-Agent':'Mozilla/5.0'} });
+    if(data.image){
+      await conn.sendMessage(from,{ image:{ url:data.image }, caption:`*🍌 NANO PRO*\n*📝 ${prompt}*\n*${BRAND}*` },{quoted:mek});
+      await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
+    }else reply(`*❌ No image generated*\n${JSON.stringify(data).slice(0,500)}`);
+  }catch(e){
+    console.log("NANO ERROR:", e.message);
+    reply(`*❌ Error:* ${e.message}`);
   }
 });
 
-// ============ NANO PRO - Collector Mode (Multi-Image Blend) ============
 cmd({
-  pattern: "nanopro",
-  alias: ["nanocollect", "nanoblend"],
-  react: "🚀",
-  desc: "Collect up to 4 images and blend them",
-  category: "progresstech ai",
-  use: ".nanopro (reply to image) |.nanopro done <prompt>",
-  filename: __filename
+  pattern:"nanopro", alias:["nanocollect","nanoblend"], react:"🚀",
+  desc:"Collect up to 4 images and blend", category:"ai",
+  use:".nanopro (reply image) |.nanopro done <prompt>",
+  filename:__filename
 }, async (conn, mek, m, { from, q, reply }) => {
-  try {
-    const userId = m.sender;
-    if (!bananaSession[userId]) bananaSession[userId] = { images: [] };
+  try{
+    const userId=m.sender;
+    if(!bananaSession[userId]) bananaSession[userId]={ images:[] };
 
-    // DONE CASE
-    if (q?.toLowerCase().startsWith('done')) {
-      const session = bananaSession[userId];
-      const finalPrompt = q.replace(/done/i, '').trim();
-
-      if (session.images.length < 2) {
-        return reply(`*⚠️ Please add at least 2 images.*\n*Currently: ${session.images.length}/4*`);
+    if(q?.toLowerCase().startsWith('done')){
+      const session=bananaSession[userId];
+      const finalPrompt=q.replace(/done/i,'').trim();
+      if(session.images.length<2) return reply(`*⚠️ Need at least 2 images. Currently ${session.images.length}/4*`);
+      if(!finalPrompt) return reply(`*📝 Provide prompt*\n*.nanopro done make them together*`);
+      await conn.sendMessage(from,{react:{text:"🕒",key:mek.key}}).catch(()=>{});
+      reply(`*🍌 Blending ${session.images.length} images...*\n*📝 ${finalPrompt}*`);
+      let params={ prompt:finalPrompt };
+      session.images.forEach((url,i)=>{ params[`image${i+1}`]=url; });
+      const { data:initRes } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nanobana-pro-v3`, { params, timeout:60000, headers:{'User-Agent':'Mozilla/5.0'} });
+      if(!initRes.task_id) throw new Error('No task_id');
+      let resultUrl=null;
+      for(let i=0;i<25;i++){
+        await new Promise(r=>setTimeout(r,5000));
+        const { data:check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result`, { params:{ task_id:initRes.task_id }, timeout:30000, headers:{'User-Agent':'Mozilla/5.0'} });
+        if(check.status==='completed' && check.image_url){ resultUrl=check.image_url; break; }
+        if(check.status==='failed') throw new Error('Server failed');
       }
-      if (!finalPrompt) {
-        return reply(`*📝 Please provide a prompt as well.*\n*👑.nanopro done make them together 👑*`);
-      }
-
-      await conn.sendMessage(from, { react: { text: "🕒", key: mek.key } });
-      reply(`*🍌 Blending ${session.images.length} images...*\n*📝 Prompt: ${finalPrompt}*`);
-
-      let apiUrl = `https://omegatech-api.dixonomega.tech/api/ai/nanobana-pro-v3?prompt=${encodeURIComponent(finalPrompt)}`;
-      session.images.forEach((url, i) => {
-        apiUrl += `&image${i + 1}=${encodeURIComponent(url)}`;
-      });
-
-      const { data: initRes } = await axios.get(apiUrl);
-      if (!initRes.success) throw new Error('API failed to initiate blend.');
-
-      const taskId = initRes.task_id;
-      let resultUrl = null;
-      let attempts = 0;
-
-      while (!resultUrl && attempts < 25) {
-        await new Promise(r => setTimeout(r, 5000));
-        const { data: check } = await axios.get(`https://omegatech-api.dixonomega.tech/api/ai/nano-banana2-result?task_id=${taskId}`);
-        if (check.status === 'completed' && check.image_url) {
-          resultUrl = check.image_url;
-          break;
-        }
-        if (check.status === 'failed') throw new Error('Server reported generation failure.');
-        attempts++;
-      }
-
-      if (!resultUrl) throw new Error('Generation timed out.');
-
-      await conn.sendMessage(from, {
-        image: { url: resultUrl },
-        caption: `*🍌 NANO-BANANA PRO SUCCESS 👑*\n\n*🖼️ Images Blended: ${session.images.length}*\n*📝 Prompt: ${finalPrompt}*\n*👑 By: MONA LISA MINI BOT 👑*`
-      }, { quoted: mek });
-
-      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-      delete bananaSession[userId];
+      if(!resultUrl) throw new Error('Timed out');
+      await conn.sendMessage(from,{ image:{ url:resultUrl }, caption:`*🍌 NANO PRO BLEND*\n*🖼️ ${session.images.length} images*\n*📝 ${finalPrompt}*\n*${BRAND}*` },{quoted:mek});
+      delete bananaSession[userId]; saveSess();
+      await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
       return;
     }
 
-    // COLLECT IMAGE CASE
-    const link = await uploadMedia(m);
-    if (!link) {
-      return reply(`*📸 COLLECTOR MODE ON*\n\n*Reply to an image with 👑.nanopro 👑 or send image with caption.nanopro*\n\n*When done, type:*\n*👑.nanopro done your prompt 👑*\n\n*Currently: ${bananaSession[userId].images.length}/4 images*`);
+    const link=await uploadMedia(m);
+    if(!link){
+      return reply(`*📸 COLLECTOR MODE*\nReply image with *.nanopro* to collect\nWhen done: *.nanopro done your prompt*\nCurrently: ${bananaSession[userId].images.length}/4`);
     }
-
-    if (bananaSession[userId].images.length >= 4) {
-      return reply(`*❌ Maximum 4 images limit reached.*\n*Now type:*\n*👑.nanopro done <prompt> 👑*`);
-    }
-
-    bananaSession[userId].images.push(link);
-    await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-    reply(`*✅ Image ${bananaSession[userId].images.length}/4 Added*\n\n*Send another image or type:*\n*👑.nanopro done <prompt> 👑*`);
-
-  } catch (e) {
-    console.log("NANOPRO ERROR:", e);
+    if(bananaSession[userId].images.length>=4) return reply(`*❌ Max 4 reached. Now:.nanopro done <prompt>*`);
+    bananaSession[userId].images.push(link); saveSess();
+    await conn.sendMessage(from,{react:{text:"📥",key:mek.key}}).catch(()=>{});
+    reply(`*✅ Image ${bananaSession[userId].images.length}/4 Added*\nSend another or *.nanopro done <prompt>*`);
+  }catch(e){
+    console.log("NANOPRO ERROR:", e.message);
     reply(`*❌ Error: ${e.message}*`);
-    delete bananaSession[m.sender];
+    delete bananaSession[m.sender]; saveSess();
   }
 });
