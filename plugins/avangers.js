@@ -7,13 +7,23 @@ const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://api.omegatech.app/api/Maker/avengers';
 
-function getThumb() {
+function getThumbBuffer() {
     try {
         for (const p of ['./media/menu1.png','./media/menu2.png']) {
             if (fs.existsSync(p)) return fs.readFileSync(p);
         }
-        return null;
-    } catch { return null; }
+    } catch {}
+    return null;
+}
+
+function cleanQuery(raw, prefix, patterns){
+    let q = (raw||"").trim();
+    if(!q) return "";
+    if(q.startsWith(prefix)){
+        q = q.slice(prefix.length).trim();
+        q = q.replace(new RegExp(`^(${patterns.join('|')})\\b\\s*`, 'i'), '').trim();
+    }
+    return q;
 }
 
 cmd({
@@ -21,153 +31,138 @@ cmd({
   alias: ["avenger", "avengerslogo", "textproavengers", "marvel"],
   react: "🦸",
   desc: "Generate Avengers-style logo using TextPro",
-  category: "progresstech maker",
-  use: ".avengers Progress Tech |.avengers Mona Lisa |.avengers TECH TOY",
+  category: "maker",
+  use: ".avengers Progress Tech",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
   try {
     let rawQ = q || "";
-    const inter = mek.message?.interactiveResponseMessage;
-    if (inter?.nativeFlowResponseMessage?.paramsJson) {
-        try {
-            const p = JSON.parse(inter.nativeFlowResponseMessage.paramsJson);
-            if (p.id) rawQ = p.id.replace(prefix,"").trim();
-        } catch {}
-    }
-    if (mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId) {
-        rawQ = mek.message.listResponseMessage.singleSelectReply.selectedRowId.replace(prefix,"").trim();
-    }
-    if (rawQ.startsWith(prefix)) rawQ = rawQ.replace(new RegExp(`^${prefix}[a-z-]+\\s*`, 'i'), '').trim();
+    try {
+        const p1 = mek.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+        if(p1){ const j = JSON.parse(p1); if(j.id) rawQ = j.id; }
+        const p2 = mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+        if(p2) rawQ = p2;
+    } catch {}
+
+    let text = cleanQuery(rawQ, prefix, ["avengers","avenger","avengerslogo","textproavengers","marvel"]);
+    if(!text) text = cleanQuery(q, prefix, ["avengers","avenger","avengerslogo","textproavengers","marvel"]);
+    if(!text) text = (rawQ || "").trim();
 
     const ctx = {
         forwardingScore: 999, isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_JID,
-            serverMessageId: 1,
-            newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
-        }
+        forwardedNewsletterMessageInfo: { newsletterJid: NEWSLETTER_JID, serverMessageId: 1, newsletterName: '🥷TECH TOY🧑‍💻™ ✓' }
     };
 
-    if (!rawQ || rawQ.toLowerCase() === 'help' || rawQ.toLowerCase() === 'menu') {
+    if (!text || ['help','menu','logo'].includes(text.toLowerCase())) {
         let thumb = null;
         try {
             const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
-            const tb = getThumb();
-            if (tb) {
-                const media = await prepareWAMessageMedia({ image: tb }, { upload: conn.waUploadToServer });
+            const buf = getThumbBuffer();
+            if(buf){
+                const media = await prepareWAMessageMedia({ image: buf }, { upload: conn.waUploadToServer });
                 thumb = media.imageMessage;
             }
         } catch {}
 
         const menu = `┏━━〔 🦸 Avengers Logo 〕━━┓
 ┃ Generate Avengers-style logo
-┃ Using TextPro
-┃ Returns raw PNG HD
+┃ Using TextPro - Returns HD PNG
 ┃
 ┃ *Usage:*
 ┃ ${prefix}avengers Progress Tech
 ┃ ${prefix}avengers Mona Lisa
 ┃ ${prefix}avengers TECH TOY
-┃ ${prefix}avengers Bamenda
-┗━━━━━━━━━━━━━━┛
-`;
-
-        const buttons = [
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 Progress Tech", id: `${prefix}avengers Progress Tech` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 TECH TOY", id: `${prefix}avengers TECH TOY` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 Mona Lisa", id: `${prefix}avengers Mona Lisa` }) },
-            { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 TECH TOY Channel", url: CHANNEL_LINK }) }
-        ];
+┗━━━━━━━━━━━━━━┛`;
 
         return await conn.relayMessage(from, {
             interactiveMessage: {
-                header: { title: "🦸 Avengers Logo • TextPro", hasMediaAttachment:!!thumb,...(thumb? { imageMessage: thumb } : {}) },
+                header: { title: "🦸 Avengers Logo • TextPro", hasMediaAttachment:!!thumb, ...(thumb?{imageMessage:thumb}:{}) },
                 body: { text: menu },
                 footer: { text: BRAND },
-                nativeFlowMessage: { buttons }
+                nativeFlowMessage: {
+                    buttons: [
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 Progress Tech", id: `${prefix}avengers Progress Tech` }) },
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 TECH TOY", id: `${prefix}avengers TECH TOY` }) },
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🦸 Mona Lisa", id: `${prefix}avengers Mona Lisa` }) },
+                        { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: CHANNEL_LINK }) }
+                    ]
+                }
             },
             contextInfo: ctx
         }, {});
     }
 
-    await conn.sendMessage(from, { react: { text: "🦸", key: mek.key } });
-    reply(`*🦸 Generating Avengers Logo...*\n*Text:* ${rawQ}\n\n_${BRAND}_`);
+    try{ await conn.sendMessage(from, { react: { text: "🦸", key: mek.key } }); }catch{}
+    await reply(`*🦸 Generating Avengers Logo...*\n*Text:* ${text}\n_${BRAND}_`);
 
     let imageBuffer = null;
+    let imageUrl = null;
 
-    // GET - This endpoint returns raw PNG directly (per screenshot)
+    // GET - raw PNG per docs
     try {
-        const { data } = await axios.get(`${API}?text=${encodeURIComponent(rawQ)}&name=${encodeURIComponent(rawQ)}&q=${encodeURIComponent(rawQ)}`, {
+        const { data, headers } = await axios.get(`${API}?text=${encodeURIComponent(text)}&name=${encodeURIComponent(text)}&q=${encodeURIComponent(text)}`, {
             timeout: 60000,
-            responseType: 'arraybuffer'
+            responseType: 'arraybuffer',
+            headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-
-        const cType = data ? '' : '';
-        // Check if it's image or JSON
         const buf = Buffer.from(data);
-        const textCheck = buf.toString('utf8').slice(0,20);
-
-        if (textCheck.startsWith('{')) {
-            // JSON returned with URL
-            try {
+        const isJson = buf.toString('utf8',0,30).trim().startsWith('{');
+        if(isJson){
+            try{
                 const json = JSON.parse(buf.toString('utf8'));
-                const url = json.data?.url || json.data?.image_url || json.url || json.result;
-                if (url) {
-                    await conn.sendMessage(from, {
-                        image: { url },
-                        caption: `*✅ Avengers Logo*\n*Text:* ${rawQ}\n\n*${BRAND}*\n${CHANNEL_LINK}`,
-                        contextInfo: ctx
-                    }, { quoted: mek });
-                    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-                    return;
-                }
-            } catch {}
-        } else if (buf.length > 1000) {
+                imageUrl = json.data?.url || json.data?.image_url || json.url || json.result;
+            }catch{}
+        } else if(buf.length > 1500){
             imageBuffer = buf;
         }
-
-    } catch (e) {
-        console.log('GET raw failed', e.message);
-        // Try POST
-        try {
-            const { data } = await axios.post(API, { text: rawQ, name: rawQ }, { timeout: 60000, responseType: 'arraybuffer' });
-            const buf = Buffer.from(data);
-            if (buf.length > 1000 &&!buf.toString('utf8').startsWith('{')) imageBuffer = buf;
-            else {
-                try {
-                    const json = JSON.parse(buf.toString('utf8'));
-                    const url = json.data?.url || json.url;
-                    if (url) {
-                        await conn.sendMessage(from, { image: { url }, caption: `*✅ Avengers Logo*\n*Text:* ${rawQ}\n\n*${BRAND}*`, contextInfo: ctx }, { quoted: mek });
-                        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-                        return;
-                    }
-                } catch {}
-            }
-        } catch {}
+    } catch(e){
+        console.log('Avengers GET fail:', e.message);
     }
 
-    if (!imageBuffer) throw new Error('No PNG returned from TextPro API');
+    // POST fallback
+    if(!imageBuffer &&!imageUrl){
+        try{
+            const { data } = await axios.post(API, { text, name: text, q: text }, { timeout: 60000, responseType: 'arraybuffer' });
+            const buf = Buffer.from(data);
+            const isJson = buf.toString('utf8',0,30).trim().startsWith('{');
+            if(isJson){
+                try{
+                    const json = JSON.parse(buf.toString('utf8'));
+                    imageUrl = json.data?.url || json.data?.image_url || json.url || json.result;
+                }catch{}
+            } else if(buf.length > 1500){
+                imageBuffer = buf;
+            }
+        }catch(e){ console.log('Avengers POST fail:', e.message); }
+    }
+
+    if(imageUrl){
+        await conn.sendMessage(from, { image: { url: imageUrl }, caption: `*✅ Avengers - ${text}*\n\n${BRAND}\n${CHANNEL_LINK}`, contextInfo: ctx }, { quoted: mek });
+        try{ await conn.sendMessage(from, { react: { text: "✅", key: mek.key } }); }catch{}
+        return;
+    }
+
+    if(!imageBuffer) throw new Error('No PNG returned - API may be down');
 
     await conn.sendMessage(from, {
         image: imageBuffer,
-        caption: `*✅ Avengers Logo Generated*\n*Text:* ${rawQ}\n\n*${BRAND}*\n${CHANNEL_LINK}`,
+        caption: `*✅ Avengers Logo - ${text}*\n\n${BRAND}\n${CHANNEL_LINK}`,
         contextInfo: ctx
     }, { quoted: mek });
 
-    // Also send as document HD
     await conn.sendMessage(from, {
         document: imageBuffer,
         mimetype: 'image/png',
-        fileName: `Avengers_${rawQ.replace(/\s+/g,'_')}.png`,
-        caption: `*HD Avengers Logo - ${rawQ}*\n${BRAND}`,
+        fileName: `Avengers_${text.replace(/\s+/g,'_')}.png`,
+        caption: `*HD PNG - ${text}*\n${BRAND}`,
         contextInfo: ctx
     }, { quoted: mek });
 
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+    try{ await conn.sendMessage(from, { react: { text: "✅", key: mek.key } }); }catch{}
 
   } catch (e) {
-    console.error('Avengers Error:', e.response?.data? Buffer.from(e.response.data).toString().slice(0,300) : e.message);
-    reply(`*❌ Avengers Logo Failed*\n${e.message}\n\nTry: ${'.avengers Progress Tech'}`);
+    console.error('Avengers Error:', e.response?.data ? Buffer.from(e.response.data).toString().slice(0,500) : e.stack);
+    try{ await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); }catch{}
+    await reply(`*❌ Avengers Failed*\n${e.message}\nTry: .avengers Progress Tech\n${BRAND}`);
   }
 });
