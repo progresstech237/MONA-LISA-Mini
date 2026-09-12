@@ -1,120 +1,109 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
-const crypto = require('crypto');
 const FormData = require('form-data');
-const fs = require('fs');
-const path = require('path');
 
-const CLOUDINARY_IMAGE = 'https://res.cloudinary.com/di2a9lenz/image/upload/v1786909227/omegatech_ai_media/upload-1786909226872.jpg';
+const NEWSLETTER_JID = '120363425282620066@newsletter';
+const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
+const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY™ ✓';
 
-async function uploadFileToCDN(buffer, filename) {
-    try {
-        const form = new FormData();
-        form.append('file', buffer, { filename: filename || 'audio.mp3' });
-        form.append('type', 'permanent');
-        const { data } = await axios.post('https://tmp.malvryx.dev/upload', form, {
-            headers: form.getHeaders(),
-            timeout: 30000
-        });
-        return data?.cdnUrl || data?.directUrl || null;
-    } catch (e) {
-        console.error('Upload error:', e);
-        return null;
-    }
+async function uploadFileToCDN(buffer, filename){
+  const uploaders=[
+    { url:'https://tmpfiles.org/api/v1/upload', field:'file', parse:d=>d.data?.url || d.url },
+    { url:'https://tmp.malvryx.dev/upload', field:'file', parse:d=>d.cdnUrl||d.directUrl||d.url||d.data?.url },
+    { url:'https://file.io', field:'file', parse:d=>d.link }
+  ];
+  for(const u of uploaders){
+    try{
+      const form=new FormData();
+      form.append(u.field, buffer, { filename: filename||`audio_${Date.now()}.mp3` });
+      if(u.url.includes('malvryx')) form.append('type','permanent');
+      const { data } = await axios.post(u.url, form, { headers:{...form.getHeaders(),'User-Agent':'Mozilla/5.0'}, timeout:30000 });
+      const link=u.parse(data);
+      if(link && link.startsWith('http')) return link;
+    }catch(e){ console.log('Uploader fail', u.url, e.message); }
+  }
+  return null;
 }
 
-async function transcribeAudio(audioUrl, scenario = 'auto') {
-    const apiUrl = `https://api.omegatech.app/api/tools/audio-transcribe?audioUrl=${encodeURIComponent(audioUrl)}&scenario=${encodeURIComponent(scenario)}`;
-    const { data } = await axios.get(apiUrl, { timeout: 60000 });
-    if (!data.success) throw new Error('Transcription failed');
-    return data;
-}
-
-async function sendRichResponse(conn, chatId, data, audioUrl, scenario, taggedUsers = []) {
-    try {
-        const messageSecret = crypto.randomBytes(32).toString('base64');
-        const stanzaId = crypto.randomBytes(16).toString('hex').toUpperCase();
-        const responseId = crypto.randomUUID();
-        const transcription = data.transcription || 'No transcription available.';
-        const duration = data.durationMinutes || 'N/A';
-        const language = data.languageCode || 'auto';
-        const taskId = data.taskId || 'N/A';
-
-        const responseData = {
-            "response_id": responseId,
-            "sections": [
-                {
-                    "view_model": { "primitive": { "title": "🎤 Audio Transcription", "brand": "Progress Tech AI", "price": `⏱️ ${duration}m`, "product_url": "https://wa.me/237682432296", "image": { "url": CLOUDINARY_IMAGE, "mime_type": "image/jpeg" }, "additional_images": [], "__typename": "GenAIProductItemCardPrimitive" }, "__typename": "GenAISingleLayoutViewModel" },
-                    "__typename": "GenAIUnifiedResponseSection"
-                },
-                {
-                    "view_model": { "primitive": { "text": `*✅ Transcription Complete!*\n\n*🔊 Audio:* ${audioUrl}\n*🎯 Scenario:* ${scenario}\n*🌐 Language:* ${language}\n*⏱️ Duration:* ${duration} minute(s)\n*📋 Task ID:* ${taskId}\n\n*📝 Transcription:*\n${transcription.slice(0, 3000)}${transcription.length > 3000? '...' : ''}`, "inline_entities": [], "__typename": "GenAIMarkdownTextUXPrimitive" }, "__typename": "GenAISingleLayoutViewModel" },
-                    "__typename": "GenAIUnifiedResponseSection"
-                }
-            ]
-        };
-
-        await conn.relayMessage(chatId, {
-            senderKeyDistributionMessage: { groupId: "120363425020013890@g.us", axolotlSenderKeyDistributionMessage: Buffer.from("Mwi6ieeLBxAHGiD/fbbPrF6NXxievrFYIENndR2KJc/bUm+NZ8Ihva8dGCIhBYacW+mUtF7tWBfr+yb2z1WQoIYpEj/chPPWWQm3j5El", "base64") },
-            messageContextInfo: { messageSecret, botMetadata: { messageDisclaimerText: "Progress Tech Audio Transcription", botResponseId: responseId } },
-            botForwardedMessage: { message: { richResponseMessage: { messageType: 1, unifiedResponse: { data: Buffer.from(JSON.stringify(responseData)).toString('base64') }, contextInfo: { stanzaId, participant: "237682432296@s.whatsapp.net", quotedMessage: { extendedTextMessage: { text: "Transcription result", previewType: 0 } }, forwardingScore: 1, isForwarded: true, mentionedJid: taggedUsers } } } }
-        }, {});
-        return true;
-    } catch (e) { console.error(e); return false; }
+async function transcribeAudio(audioUrl, scenario='auto'){
+  const api=`https://api.omegatech.app/api/tools/audio-transcribe?audioUrl=${encodeURIComponent(audioUrl)}&scenario=${encodeURIComponent(scenario)}`;
+  const { data } = await axios.get(api,{ timeout:60000, headers:{'User-Agent':'Mozilla/5.0'} });
+  if(!data.success &&!data.transcription) throw new Error(data.message||'Transcription failed');
+  return data;
 }
 
 cmd({
-  pattern: "transcribe",
-  alias: ["transcript", "voice2text"],
-  react: "🎤",
-  desc: "Transcribe audio files using AI",
-  category: "progresstech tools",
-  use: ".transcribe (reply to audio) |.transcribe <audio_url> --scenario meeting",
-  filename: __filename
+  pattern: "transcribe", alias: ["transcript","voice2text"], react:"🎤",
+  desc:"Transcribe audio/voice", category:"progresstech tools",
+  use:".transcribe reply to audio |.transcribe <url> --scenario meeting",
+  filename:__filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
-  try {
-    let audioUrl = null;
-    let scenario = 'auto';
-    let text = q || '';
+  try{
+    let audioUrl=null, scenario='auto', text=(q||'').trim();
+    const match=text.match(/--scenario\s+([^\s]+)/i);
+    if(match){ scenario=match[1]; text=text.replace(/--scenario\s+[^\s]+/i,'').trim(); }
 
-    const scenarioMatch = text.match(/--scenario\s+([^\s]+)/i);
-    if (scenarioMatch) {
-        scenario = scenarioMatch[1];
-        text = text.replace(/--scenario\s+[^\s]+/i, '').trim();
-    }
+    const ctx={ forwardingScore:999, isForwarded:true, forwardedNewsletterMessageInfo:{ newsletterJid:NEWSLETTER_JID, serverMessageId:1, newsletterName:'🥷TECH TOY™ ✓' } };
 
-    const quoted = m.quoted || m;
-    const isAudio = quoted.mimetype && quoted.mimetype.startsWith('audio/');
-    const isVoice = quoted.mimetype && quoted.mimetype.includes('ogg');
-    const mime2 = quoted.msg?.mimetype || "";
-    const isAudio2 = /audio/.test(mime2) || /audio/.test(quoted.mimetype || "");
+    // Check quoted or own audio
+    const quotedMsg = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    const hasQuotedAudio = !!(quotedMsg?.audioMessage || quotedMsg?.pttMessage || quotedMsg?.documentMessage);
+    const hasOwnAudio = !!(mek.message?.audioMessage || mek.message?.pttMessage);
 
-    if (isAudio || isVoice || isAudio2) {
+    if(hasQuotedAudio || hasOwnAudio){
+      try{
+        await conn.sendMessage(from,{react:{text:"📤",key:mek.key}}).catch(()=>{});
         reply(`*📤 Downloading audio...*`);
-        const media = await quoted.download();
-        reply(`*📤 Uploading audio to server...*`);
-        audioUrl = await uploadFileToCDN(media, `audio_${Date.now()}.mp3`);
-        if (!audioUrl) return reply(`*❌ Failed to upload audio. Please try again.*`);
+        let buffer;
+        if(hasQuotedAudio){
+          const msgObj = { message: quotedMsg, key: { id: mek.key.id } };
+          // try different download methods for compatibility
+          try{ buffer = await conn.downloadMediaMessage(msgObj); }catch{ buffer = await conn.downloadMediaMessage({ message:{ audioMessage: quotedMsg.audioMessage || quotedMsg.pttMessage } }); }
+        }else{
+          buffer = await conn.downloadMediaMessage(mek);
+        }
+        if(!buffer) throw new Error('Download empty');
+        reply(`*📤 Uploading ${(buffer.length/1024).toFixed(1)}KB...*`);
+        audioUrl = await uploadFileToCDN(buffer, `audio_${Date.now()}.mp3`);
+        if(!audioUrl) throw new Error('Upload failed - try with direct URL');
+      }catch(dlErr){
+        return reply(`*❌ Download/upload failed*\n${dlErr.message}\nSend audio URL: ${prefix}transcribe https://...`);
+      }
     }
 
-    if (text && text.match(/^https?:\/\/[^\s]+$/)) {
-        audioUrl = text;
+    if(text && /^https?:\/\//.test(text)){
+      audioUrl=text.split(' ')[0];
     }
 
-    if (!audioUrl) {
-        return reply(`*🎤 AUDIO TRANSCRIPTION 👑*\n\n*Transcribe audio files to text using AI.*\n\n*Usage:*\n*👑 ${prefix}transcribe (reply to audio) 👑*\n*👑 ${prefix}transcribe <audio_url> 👑*\n\n*Examples:*\n*👑 ${prefix}transcribe (reply to voice note) 👑*\n*👑 ${prefix}transcribe https://example.com/audio.mp3 👑*\n*👑 ${prefix}transcribe <url> --scenario meeting 👑*\n\n*🎯 Scenarios: auto, meeting, interview, lecture, etc.*\n\n*⚡ Powered by PROGRESS AI*`);
+    if(!audioUrl){
+      return reply(`*🎤 AUDIO TRANSCRIPTION*\n\n*${prefix}transcribe* reply to voice note\n*${prefix}transcribe* https://example.com/audio.mp3\n*${prefix}transcribe* <url> --scenario meeting\n\n*Scenarios:* auto, meeting, interview, lecture\n\n${BRAND}`);
     }
 
-    reply(`*⏳ Transcribing audio... This may take a moment.*`);
+    await conn.sendMessage(from,{react:{text:"⏳",key:mek.key}}).catch(()=>{});
+    reply(`*⏳ Transcribing...*\n*🔊:* ${audioUrl.slice(0,60)}...\n*🎯:* ${scenario}\n\n_${BRAND}_`);
+
     const result = await transcribeAudio(audioUrl, scenario);
-    await sendRichResponse(conn, from, result, audioUrl, scenario, [m.sender]);
+    const transcription=result.transcription||result.text||result.data?.transcription||'No transcription';
+    const duration=result.durationMinutes||result.duration||'N/A';
+    const lang=result.languageCode||result.language||'auto';
+    const taskId=result.taskId||result.id||'N/A';
 
-    // also send plain text fallback
-    let fallback = `*✅ TRANSCRIPTION COMPLETE 👑*\n\n*🔊 Audio: ${audioUrl}*\n*🎯 Scenario: ${scenario}*\n*🌐 Language: ${result.languageCode || 'auto'}*\n*⏱️ Duration: ${result.durationMinutes || 'N/A'}m*\n\n*📝 Transcription:*\n${result.transcription || 'No transcription'}`;
-    reply(fallback);
+    let msg=`*✅ TRANSCRIPTION COMPLETE*\n\n`;
+    msg+=`*🔊:* ${audioUrl}\n*🎯 Scenario:* ${scenario}\n*🌐 Language:* ${lang}\n*⏱️ Duration:* ${duration}m\n*📋 Task:* ${taskId}\n\n`;
+    msg+=`*📝 Transcription:*\n${transcription}\n\n_${BRAND}_\n${CHANNEL_LINK}`;
 
-  } catch (e) {
-    console.error('Transcribe error:', e);
-    reply(`*❌ Error: ${e.message || 'Unknown error'}*`);
+    // chunk if long
+    if(msg.length>3800){
+      for(const chunk of msg.match(/.{1,3500}/gs)){
+        await conn.sendMessage(from,{ text: chunk, contextInfo: ctx }, {quoted:mek});
+      }
+    }else{
+      await conn.sendMessage(from,{ text: msg, contextInfo: ctx }, {quoted:mek});
+    }
+
+    await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
+  }catch(e){
+    console.error('Transcribe error:', e.response?.data||e.message);
+    reply(`*❌ Transcribe Failed*\n${e.response?.data?.message || e.message}`);
   }
 });
