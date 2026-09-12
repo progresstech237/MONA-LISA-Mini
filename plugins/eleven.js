@@ -7,169 +7,175 @@ const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://api.omegatech.app/api/ai/elevenlabs';
 
-function getThumb() {
+function getThumbBuffer() {
     try {
         for (const p of ['./media/menu1.png','./media/menu2.png']) {
             if (fs.existsSync(p)) return fs.readFileSync(p);
         }
-        return null;
     } catch { return null; }
+}
+function cleanQuery(raw, prefix, patterns){
+    let q = (raw||"").trim();
+    if(!q) return "";
+    if(q.startsWith(prefix)){
+        q = q.slice(prefix.length).trim();
+        q = q.replace(new RegExp(`^(${patterns.join('|')})\\b\\s*`, 'i'), '').trim();
+    }
+    return q;
 }
 
 cmd({
   pattern: "eleven",
-  alias: ["elevenlabs", "elevenlab", "elv", "arnold", "bella"],
+  alias: ["elevenlabs", "elv", "arnold", "bella"],
   react: "🔊",
   desc: "ElevenLabs TTS - Arnold, Bella, Krishna",
   category: "progresstech ai",
-  use: ".eleven bella|Hello world |.eleven arnold|I love you |.eleven krishna|Mona Lisa",
+  use: ".eleven bella|Hello world",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
   try {
     let rawQ = q || "";
-    const inter = mek.message?.interactiveResponseMessage;
-    if (inter?.nativeFlowResponseMessage?.paramsJson) {
-        try {
-            const p = JSON.parse(inter.nativeFlowResponseMessage.paramsJson);
-            if (p.id) rawQ = p.id.replace(prefix,"").trim();
-        } catch {}
-    }
-    if (mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId) {
-        rawQ = mek.message.listResponseMessage.singleSelectReply.selectedRowId.replace(prefix,"").trim();
-    }
-    if (rawQ.startsWith(prefix)) rawQ = rawQ.replace(new RegExp(`^${prefix}[a-z-]+\\s*`, 'i'), '').trim();
+    try{
+        const p1 = mek.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+        if(p1){ const j = JSON.parse(p1); if(j.id) rawQ = j.id; }
+        const p2 = mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+        if(p2) rawQ = p2;
+    }catch{}
+
+    let cleaned = cleanQuery(rawQ, prefix, ["eleven","elevenlabs","elevenlab","elv","arnold","bella"]);
+    if(!cleaned) cleaned = cleanQuery(q, prefix, ["eleven","elevenlabs","elevenlab","elv","arnold","bella"]);
+    if(!cleaned) cleaned = (rawQ||"").trim();
 
     const ctx = {
         forwardingScore: 999, isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_JID,
-            serverMessageId: 1,
-            newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
-        }
+        forwardedNewsletterMessageInfo: { newsletterJid: NEWSLETTER_JID, serverMessageId: 1, newsletterName: '🥷TECH TOY🧑‍💻™ ✓' }
     };
 
     const voices = ['arnold','bella','krishna'];
 
-    if (!rawQ || rawQ.toLowerCase() === 'help' || rawQ.toLowerCase() === 'menu' || rawQ.toLowerCase() === 'voices') {
+    if (!cleaned || ['eleven','menu','voices','list'].includes(cleaned.toLowerCase())) {
         let thumb = null;
         try {
             const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
-            const tb = getThumb();
-            if (tb) {
-                const media = await prepareWAMessageMedia({ image: tb }, { upload: conn.waUploadToServer });
+            const buf = getThumbBuffer();
+            if(buf){
+                const media = await prepareWAMessageMedia({ image: buf }, { upload: conn.waUploadToServer });
                 thumb = media.imageMessage;
             }
         } catch {}
 
         const menu = `┏━━〔 🔊 ElevenLabs TTS 〕━━┓
-┃ Real ElevenLabs voices
-┃ via Omegatech
+┃ Real ElevenLabs voices via Omegatech
 ┃
 ┃ *Voices:*
-┃ 🎙️ Arnold - deep male
-┃ 🎙️ Bella - soft female
-┃ 🎙️ Krishna - indian male
+┃ 🎙️ arnold - deep male
+┃ 🎙️ bella - soft female (default)
+┃ 🎙️ krishna - indian male
 ┃
 ┃ *Usage:*
 ┃ ${prefix}eleven bella|Hello my love
 ┃ ${prefix}eleven arnold|Mona Lisa you fine
 ┃ ${prefix}eleven krishna|Welcome to Tech Toy
-┃
-┃ ${prefix}eleven <text> (default Bella)
-┗━━━━━━━━━━━━━━┛
-`;
-
-        const buttons = [
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Arnold", id: `${prefix}eleven arnold|This is Arnold voice from ElevenLabs, deep and powerful` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Bella", id: `${prefix}eleven bella|Hello darling, this is Bella voice, soft and sweet` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Krishna", id: `${prefix}eleven krishna|Namaste, this is Krishna voice from Progress Tech` }) },
-            { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 TECH TOY Channel", url: CHANNEL_LINK }) }
-        ];
+┃ ${prefix}eleven <text> (default bella)
+┗━━━━━━━━━━━━━━┛`;
 
         return await conn.relayMessage(from, {
             interactiveMessage: {
-                header: { title: "🔊 ElevenLabs • Omegatech", hasMediaAttachment:!!thumb,...(thumb? { imageMessage: thumb } : {}) },
+                header: { title: "🔊 ElevenLabs • Omegatech", hasMediaAttachment:!!thumb,...(thumb?{imageMessage:thumb}:{}) },
                 body: { text: menu },
                 footer: { text: BRAND },
-                nativeFlowMessage: { buttons }
+                nativeFlowMessage: {
+                    buttons: [
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Arnold", id: `${prefix}eleven arnold|This is Arnold voice from ElevenLabs, deep and powerful` }) },
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Bella", id: `${prefix}eleven bella|Hello darling, this is Bella voice, soft and sweet` }) },
+                        { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🎙️ Krishna", id: `${prefix}eleven krishna|Namaste, this is Krishna voice from Progress Tech` }) },
+                        { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 Channel", url: CHANNEL_LINK }) }
+                    ]
+                }
             },
             contextInfo: ctx
         }, {});
     }
 
-    await conn.sendMessage(from, { react: { text: "🔊", key: mek.key } });
+    try{ await conn.sendMessage(from, { react: { text: "🔊", key: mek.key } }); }catch{}
 
-    let voice = "bella"; // default
-    let text = rawQ;
+    let voice = "bella";
+    let text = cleaned;
 
-    if (rawQ.includes('|')) {
-        const parts = rawQ.split('|');
+    if (cleaned.includes('|')) {
+        const parts = cleaned.split('|');
         let maybeVoice = parts[0].trim().toLowerCase();
         if (voices.includes(maybeVoice)) {
             voice = maybeVoice;
             text = parts.slice(1).join('|').trim();
         }
     } else {
-        const first = rawQ.split(' ')[0].toLowerCase();
+        const first = cleaned.split(/\s+/)[0].toLowerCase();
         if (voices.includes(first)) {
             voice = first;
-            text = rawQ.slice(first.length).trim();
+            text = cleaned.slice(first.length).trim();
         }
     }
 
-    if (!text) return reply(`*❌ No text*\nExample: ${prefix}eleven bella|Hello world`);
+    if (!text || text.length < 1) return await reply(`*❌ No text*\nExample: ${prefix}eleven bella|Hello world`);
+    if (text.length > 500) text = text.slice(0,500); // Eleven API limit
 
-    reply(`*🔊 Generating with ElevenLabs...*\nVoice: *${voice}*\nText: ${text.slice(0,80)}\n\n_${BRAND}_`);
+    await reply(`*🔊 Generating...*\nVoice: *${voice}*\nText: ${text.slice(0,80)}\n_${BRAND}_`);
 
     let audioUrl = null;
+    let audioBuffer = null;
 
-    // POST - Working per your screenshot
+    // 1) POST try
     try {
         const { data } = await axios.post(API, {
-            text: text,
-            voice: voice,
-            voice_name: voice,
-            model: voice
-        }, { timeout: 60000, headers: { 'Content-Type': 'application/json' } });
+            text, voice, voice_name: voice, model: voice
+        }, { timeout: 60000, headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' } });
 
-        audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url || data.data?.audio || data.audio || data.data?.link || data.link;
-        if (!audioUrl && typeof data.data === 'string' && data.data.startsWith('http')) audioUrl = data.data;
-        if (!audioUrl && typeof data === 'string' && data.startsWith('http')) audioUrl = data;
-    } catch (e) {
-        console.log('POST error', e.message);
-    }
+        if(data){
+            audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url || data.data?.audio || data.audio || data.data?.link || data.link;
+            if (!audioUrl && typeof data.data === 'string' && data.data.startsWith('http')) audioUrl = data.data;
+            if (!audioUrl && typeof data === 'string' && data.startsWith('http')) audioUrl = data;
+            // direct buffer base64?
+            const b64 = data.data?.base64 || data.base64 || data.data?.audio_base64;
+            if(!audioUrl && b64) audioBuffer = Buffer.from(b64.replace(/^data:audio\/\w+;base64,/,'').trim(), 'base64');
+        }
+    } catch(e){ console.log('Eleven POST fail:', e.message); }
 
-    // GET fallback
-    if (!audioUrl) {
+    // 2) GET fallback
+    if (!audioUrl &&!audioBuffer) {
         const urls = [
             `${API}?text=${encodeURIComponent(text)}&voice=${voice}`,
             `${API}?text=${encodeURIComponent(text)}&voice_name=${voice}`,
-            `https://api.omegatech.app/api/ai/elevenlabs?text=${encodeURIComponent(text)}&voice=${voice}&model=${voice}`
+            `${API}?text=${encodeURIComponent(text)}&voice=${voice}&model=${voice}`
         ];
         for (const u of urls) {
             try {
-                const { data } = await axios.get(u, { timeout: 60000 });
-                audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url || data.data?.audio;
+                const { data } = await axios.get(u, { timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+                audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url;
                 if (!audioUrl && typeof data.data === 'string' && data.data.startsWith('http')) audioUrl = data.data;
                 if (audioUrl) break;
             } catch {}
         }
     }
 
-    if (!audioUrl) throw new Error('No audio URL returned');
+    if (!audioUrl &&!audioBuffer) throw new Error('No audio URL returned from omegatech - API may be down');
 
-    // Send as voice note + downloadable
+    const audioPayload = audioBuffer? audioBuffer : { url: audioUrl };
+
+    // Send as PTT voice note
     await conn.sendMessage(from, {
-        audio: { url: audioUrl },
+        audio: audioPayload,
         mimetype: 'audio/mpeg',
         ptt: true,
         contextInfo: ctx
     }, { quoted: mek });
 
+    // Send as normal audio file
     await conn.sendMessage(from, {
-        audio: { url: audioUrl },
+        audio: audioPayload,
         mimetype: 'audio/mpeg',
         ptt: false,
+        fileName: `eleven_${voice}.mp3`,
         contextInfo: ctx
     }, { quoted: mek });
 
@@ -178,10 +184,12 @@ cmd({
         contextInfo: ctx
     }, { quoted: mek });
 
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+    try{ await conn.sendMessage(from, { react: { text: "✅", key: mek.key } }); }catch{}
 
   } catch (e) {
     console.error('ElevenLabs Error:', e.response?.data || e.message);
-    reply(`*❌ ElevenLabs Failed*\n${e.response?.data?.message || e.message}`);
+    try{ await conn.sendMessage(from, { react: { text: "❌", key: mek.key } }); }catch{}
+    const msg = e.response?.data? JSON.stringify(e.response.data).slice(0,500) : e.message;
+    await reply(`*❌ ElevenLabs Failed*\n${msg}\n${BRAND}`);
   }
 });
