@@ -7,89 +7,78 @@ const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://api.omegatech.app/api/tools/freenumber-countries-availble';
 
-function getThumb() { try { for (const p of ['./media/menu1.png','./media/menu2.png']) if (fs.existsSync(p)) return fs.readFileSync(p); } catch {} return null; }
+function getThumb(){ try{ for(const p of ['./media/menu1.png','./media/menu2.png']) if(fs.existsSync(p)) return fs.readFileSync(p); }catch{} return null; }
 
 cmd({
   pattern: "freenumber",
-  alias: ["veepn", "veepncountries", "freenum", "countries", "vpncountries"],
+  alias: ["veepn","freenum","countries"],
   react: "🌍",
-  desc: "Get all available Veepn free number countries - no params required",
+  desc: "Veepn free number countries",
   category: "progresstech tools",
-  use: ".freenumber",
+  use: ".freenumber | .freenumber cameroon",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
-  try {
-    const ctx = { forwardingScore: 999, isForwarded: true, forwardedNewsletterMessageInfo: { newsletterJid: NEWSLETTER_JID, serverMessageId: 1, newsletterName: '🥷TECH TOY🧑‍💻™ ✓' } };
+  try{
+    const ctx = { forwardingScore:999, isForwarded:true, forwardedNewsletterMessageInfo:{ newsletterJid:NEWSLETTER_JID, serverMessageId:1, newsletterName:'🥷TECH TOY🧑‍💻™ ✓' } };
+    await conn.sendMessage(from,{react:{text:"🌍",key:mek.key}}).catch(()=>{});
 
-    let rawQ = q || "";
-    if (mek.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson) {
-      try { const p = JSON.parse(mek.message.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson); if (p.id) rawQ = p.id.replace(prefix,"").trim(); } catch {}
+    let raw = null;
+    try{
+      const { data } = await axios.get(API, { timeout:15000, headers:{ 'User-Agent':'Mozilla/5.0' } });
+      raw = data;
+    }catch{
+      const { data } = await axios.post(API, {}, { timeout:15000, headers:{ 'Content-Type':'application/json','User-Agent':'Mozilla/5.0' } });
+      raw = data;
     }
 
-    if (!rawQ || ['help','menu'].includes(rawQ.toLowerCase())) {
-        // still show menu but also auto fetch
+    // Omega returns: { status:true, data: [ {country, code, ...} ] } or { countries: [...] }
+    let countries = raw?.data?.countries || raw?.countries || raw?.data || raw?.result || [];
+    if(!Array.isArray(countries)){
+      if(typeof countries === 'object' && countries!==null){
+        // try to extract list from object
+        if(Array.isArray(countries.available)) countries = countries.available;
+        else if(Array.isArray(countries.list)) countries = countries.list;
+        else countries = Object.values(countries).filter(v=> typeof v==='string' || (v && v.name));
+      }
+    }
+    if(!Array.isArray(countries) || countries.length===0) countries = [JSON.stringify(raw).slice(0,2000)];
+
+    let list = countries.map(c=>{
+      if(typeof c==='string') return c;
+      if(c.name && c.code) return `${c.name} (${c.code}) ${c.flag||''}`.trim();
+      return c.name || c.country || c.code || JSON.stringify(c).slice(0,100);
+    }).filter(Boolean);
+
+    // dedup + sort
+    list = [...new Set(list)].sort();
+
+    let filterQ = (q||"").trim().toLowerCase();
+    let display = list;
+    if(filterQ && !['help','menu'].includes(filterQ)){
+      const f = list.filter(x=> x.toLowerCase().includes(filterQ));
+      if(f.length>0) display = f;
     }
 
-    await conn.sendMessage(from, { react: { text: "🌍", key: mek.key } });
+    const header = filterQ && display.length!==list.length ? `*🌍 Filtered "${q}"* - Found ${display.length}/${list.length}\n\n` : `*🌍 Veepn Free Number - Available Countries*\n*Total:* ${list.length}\n\n`;
 
-    let dataResult = null;
-    try {
-        const { data } = await axios.get(API, { timeout: 20000 });
-        dataResult = data.data || data.result || data;
-    } catch {
-        const { data } = await axios.post(API, {}, { timeout: 20000, headers: { 'Content-Type': 'application/json' } });
-        dataResult = data.data || data.result || data;
+    let msg = header + display.map((c,i)=> `${i+1}. ${c}`).join('\n') + `\n\n_${BRAND}_`;
+
+    if(msg.length > 3800){
+      await conn.sendMessage(from,{ text: msg.slice(0,3800)+`\n\n_...${display.length-80} more in file_`, contextInfo:ctx }, {quoted:mek});
+      await conn.sendMessage(from,{
+        document: Buffer.from(`VEEPN COUNTRIES - Total ${list.length}\nDate: ${new Date().toLocaleString()}\nFilter: ${q||'none'}\n\n${list.join('\n')}\n\n${BRAND}`),
+        mimetype:'text/plain',
+        fileName:`Veepn_Countries_${list.length}.txt`,
+        caption:`*🌍 All ${list.length} Countries*\n${BRAND}`,
+        contextInfo:ctx
+      },{quoted:mek});
+    }else{
+      await conn.sendMessage(from,{ text: msg, contextInfo:ctx },{quoted:mek});
     }
 
-    if (!dataResult) throw new Error('No countries returned');
-
-    let countries = [];
-    if (Array.isArray(dataResult)) countries = dataResult;
-    else if (Array.isArray(dataResult.countries)) countries = dataResult.countries;
-    else if (Array.isArray(dataResult.data)) countries = dataResult.data;
-    else if (typeof dataResult === 'object') countries = Object.values(dataResult).flat().filter(x=> typeof x === 'string' || x.name) && (Array.isArray(dataResult.available)? dataResult.available : [dataResult]);
-
-    // Normalize to string list
-    let list = [];
-    if (Array.isArray(countries)) {
-        list = countries.map(c=> typeof c === 'string'? c : c.name || c.country || c.code || JSON.stringify(c));
-    } else {
-        list = [JSON.stringify(dataResult).slice(0,3000)];
-    }
-
-    if (list.length === 0) list = ['Data: '+JSON.stringify(dataResult).slice(0,3000)];
-
-    let msg = `*🌍 Veepn Free Number - Available Countries*\n*Total:* ${list.length}\n\n`;
-    msg += list.map((c,i)=> `${i+1}. ${c}`).join('\n');
-    msg += `\n\n_${BRAND}_\n_Use:.freenumber <country> to filter_`;
-
-    // Filter if query provided
-    if (rawQ &&!['help','menu'].includes(rawQ.toLowerCase())) {
-        const qlow = rawQ.toLowerCase();
-        const filtered = list.filter(c=> c.toLowerCase().includes(qlow));
-        if (filtered.length>0) {
-            msg = `*🌍 Filtered for "${rawQ}"*\n*Found:* ${filtered.length}/${list.length}\n\n${filtered.map((c,i)=> `${i+1}. ${c}`).join('\n')}\n\n${BRAND}`;
-        }
-    }
-
-    // If long, send as file too
-    if (msg.length > 4000) {
-        await conn.sendMessage(from, { text: msg.slice(0,3900)+'\n\n_...full list in file_', contextInfo: ctx }, { quoted: mek });
-        await conn.sendMessage(from, {
-            document: Buffer.from(`VEEPN COUNTRIES - Total ${list.length}\nTime: ${new Date().toLocaleString()}\n\n${list.join('\n')}\n\n${BRAND}`),
-            mimetype: 'text/plain',
-            fileName: `Veepn_Countries_${Date.now()}.txt`,
-            caption: `*🌍 All ${list.length} Countries*\n${BRAND}`,
-            contextInfo: ctx
-        }, { quoted: mek });
-    } else {
-        await conn.sendMessage(from, { text: msg, contextInfo: ctx }, { quoted: mek });
-    }
-
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-  } catch (e) {
-    console.error('Veepn Error:', e.response?.data || e.message);
-    reply(`*❌ Veepn Countries Failed*\n${e.message}`);
+    await conn.sendMessage(from,{react:{text:"✅",key:mek.key}}).catch(()=>{});
+  }catch(e){
+    console.error('Veepn Error:', e.response?.data||e.message);
+    reply(`*❌ Veepn Countries Failed*\n${e.response?.data?.message || e.message}\n${BRAND}`);
   }
 });
