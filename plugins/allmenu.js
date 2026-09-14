@@ -96,10 +96,10 @@ function buildMenu(pushName) {
         `${config.CHANNEL_LINK}`,
     ]);
 
-    return '
+    return `
   *👑 ✦ 𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 𝐕𝟐 🤭 ✦ 👑*
 ${'  '}${pick(TAGLINES)}
-╚═══════════════════════╝
+╚═══════════════╝
 
 ${statusBox}
 
