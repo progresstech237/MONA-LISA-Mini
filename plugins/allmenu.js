@@ -88,7 +88,7 @@ function buildMenu(pushName) {
 
     const sectionBoxes = SECTIONS
         .filter(s => grouped[s.title]?.length)
-        .map(s => frame(s.title, grouped[s.title].map(p => `◈ ${config.PREFIX}${p}`)))
+        .map(s => frame(s.title, grouped[s.title].map(p => `❖ ${config.PREFIX}${p}`)))
         .join('\n\n');
 
     const channelBox = frame('📡 STAY CONNECTED', [
@@ -97,10 +97,9 @@ function buildMenu(pushName) {
     ]);
 
     return `
-╔═══════════════╗
+    
   *👑 ✦𝐌𝐎𝐍𝐀 𝐋𝐈𝐒𝐀 𝐕𝟐🤭✦👑*
 ${'  '}${pick(TAGLINES)}
-╚═══════════════╝
 
 ${statusBox}
 
