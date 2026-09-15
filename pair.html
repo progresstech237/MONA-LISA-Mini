@@ -166,7 +166,7 @@
 <div class="frame">
   <div class="card">
     <img class="portrait" src="https://files.catbox.moe/4dwiou.png" alt="MONA LISA">
-    <h1>🥰 MONA LISA V2 🤭</h1>
+    <h1>🥰 MONA LISA 🤭</h1>
     <div class="tagline">Legendary Edition &nbsp;·&nbsp; <b>Powered by Progress Tech</b></div>
 
     <form id="pairForm">
@@ -442,7 +442,13 @@ form.addEventListener('submit', async (e) => {
       showState('info');
       document.getElementById('infoLabel').textContent = '🔄 Reconnecting';
       document.getElementById('infoText').textContent =
-        data.message || 'Restoring your existing session — no new code needed.';
+        data.message || 'Restoring your existing session — checking now...';
+      // Always give an immediate way out instead of a silent, indefinite
+      // wait — the user can force a brand-new code any time, right away.
+      const relinkBtn = document.getElementById('forceRelinkBtn');
+      relinkBtn.style.display = 'inline-block';
+      relinkBtn.onclick = () => forceRelink(digits);
+      pollReconnectStatus(digits);
       return;
     }
 
@@ -451,6 +457,9 @@ form.addEventListener('submit', async (e) => {
       document.getElementById('infoLabel').textContent = '⏳ In Progress';
       document.getElementById('infoText').textContent =
         'A connection attempt for this number is already underway. Please wait a moment.';
+      const relinkBtn = document.getElementById('forceRelinkBtn');
+      relinkBtn.style.display = 'inline-block';
+      relinkBtn.onclick = () => forceRelink(digits);
       return;
     }
 
@@ -468,6 +477,35 @@ form.addEventListener('submit', async (e) => {
     submitBtn.disabled = false;
   }
 });
+
+// Checks a few times whether a background reconnect actually finished —
+// instead of leaving the "Reconnecting..." message on screen forever with
+// no feedback, this either confirms success or tells the user plainly
+// that it's taking too long and points them at the force-relink button
+// that's already visible.
+async function pollReconnectStatus(digits, attempt = 1) {
+  const MAX_ATTEMPTS = 6; // ~18 seconds total
+  await new Promise(r => setTimeout(r, 3000));
+  try {
+    const res = await fetch(`/pair-status?number=${digits}`);
+    const data = await res.json();
+    const statusNow = data?.data?.status;
+    if (statusNow === 'connected') {
+      document.getElementById('infoLabel').textContent = '✅ Reconnected';
+      document.getElementById('infoText').textContent =
+        'This number is connected and active again — no further action needed.';
+      document.getElementById('forceRelinkBtn').style.display = 'none';
+      return;
+    }
+  } catch (_) {}
+
+  if (attempt >= MAX_ATTEMPTS) {
+    document.getElementById('infoText').textContent =
+      'Still reconnecting — this is taking longer than usual. You can keep waiting, or tap below to force a brand-new pairing code right now.';
+    return;
+  }
+  pollReconnectStatus(digits, attempt + 1);
+}
 
 async function forceRelink(digits) {
   if (requestInFlight) return;
