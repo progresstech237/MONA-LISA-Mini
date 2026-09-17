@@ -1,67 +1,77 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//   🎭 ANIME REACTIONS — MONA LISA
+//   🎭 ANIME REACTIONS — MONA LISA (FIXED)
 //   Powered by Progress Tech
-//   Every image comes from api.waifu.pics — a real, free, documented,
-//   SFW-only public API (verified categories only, nothing guessed).
 // ═══════════════════════════════════════════════════════════════════════════
 
 const { cmd } = require('../redx');
 const axios = require('axios');
-const { error } = require('../lib/responses');
 
-// Confirmed SFW categories on api.waifu.pics as of writing. Mapped to the
-// friendliest command name per category — some categories power a couple
-// of aliases where that makes sense (e.g. "kick" doubles as a mild "attack").
 const REACTIONS = {
-    hug: { desc: 'Send someone a warm hug' },
-    kiss: { desc: 'Send someone a kiss' },
-    pat: { desc: 'Give someone a pat on the head' },
-    cuddle: { desc: 'Cuddle up with someone' },
-    cry: { desc: 'Show that you\'re crying' },
-    dance: { desc: 'Bust out a dance' },
-    poke: { desc: 'Poke someone' },
-    bonk: { desc: 'Bonk someone' },
-    bite: { desc: 'Playfully bite someone' },
-    blush: { desc: 'Show that you\'re blushing' },
-    smile: { desc: 'Flash a smile' },
-    wave: { desc: 'Wave hello or goodbye' },
-    highfive: { desc: 'Give someone a high five' },
-    handhold: { desc: 'Hold someone\'s hand' },
-    nom: { desc: 'Nom nom nom' },
-    happy: { desc: 'Show that you\'re happy' },
-    wink: { desc: 'Give a cheeky wink' },
-    yeet: { desc: 'Yeet something (or someone)' },
-    kill: { desc: 'Dramatically "kill" someone (anime-style, just for fun)' },
-    smug: { desc: 'Show off a smug face' },
-    neko: { desc: 'Get a cute neko image' },
-    waifu: { desc: 'Get a waifu image' },
-    megumin: { desc: 'Get a Megumin image' },
-    shinobu: { desc: 'Get a Shinobu image' },
-    awoo: { desc: 'Awoo!' },
-    cringe: { desc: 'Show that something is cringe' },
-    bully: { desc: 'Playfully bully someone' },
-    lick: { desc: 'Give a playful lick' },
-    slap: { desc: 'Slap someone (anime-style, just for fun)' },
-    glomp: { desc: 'Glomp someone with a big tackle-hug' },
+    hug: { desc: '🤗 Send someone a warm hug', emoji: '🤗' },
+    kiss: { desc: '😘 Send someone a kiss', emoji: '😘' },
+    pat: { desc: 'Give someone a pat on the head', emoji: '🥰' },
+    cuddle: { desc: 'Cuddle up with someone', emoji: '🫂' },
+    cry: { desc: 'Show that you\'re crying', emoji: '😢' },
+    dance: { desc: 'Bust out a dance', emoji: '💃' },
+    poke: { desc: 'Poke someone', emoji: '👉' },
+    bonk: { desc: 'Bonk someone', emoji: '🔨' },
+    bite: { desc: 'Playfully bite someone', emoji: '😼' },
+    blush: { desc: 'Show that you\'re blushing', emoji: '😊' },
+    smile: { desc: 'Flash a smile', emoji: '😄' },
+    wave: { desc: 'Wave hello or goodbye', emoji: '👋' },
+    highfive: { desc: 'Give someone a high five', emoji: '🙏' },
+    handhold: { desc: 'Hold someone\'s hand', emoji: '🤝' },
+    nom: { desc: 'Nom nom nom', emoji: '😋' },
+    happy: { desc: 'Show that you\'re happy', emoji: '😃' },
+    wink: { desc: 'Give a cheeky wink', emoji: '😉' },
+    yeet: { desc: 'Yeet something', emoji: '💨' },
+    kill: { desc: 'Dramatically "kill" someone (anime-style)', emoji: '💀' },
+    smug: { desc: 'Show off a smug face', emoji: '😏' },
+    neko: { desc: 'Get a cute neko image', emoji: '🐱' },
+    waifu: { desc: 'Get a waifu image', emoji: '💖' },
+    megumin: { desc: 'Get a Megumin image', emoji: '🧙‍♀️' },
+    shinobu: { desc: 'Get a Shinobu image', emoji: '🦋' },
+    awoo: { desc: 'Awoo!', emoji: '🐺' },
+    cringe: { desc: 'Show that something is cringe', emoji: '😬' },
+    bully: { desc: 'Playfully bully someone', emoji: '😈' },
+    lick: { desc: 'Give a playful lick', emoji: '👅' },
+    slap: { desc: 'Slap someone (anime-style)', emoji: '👋' },
+    glomp: { desc: 'Glomp someone with a big tackle-hug', emoji: '🤗' },
 };
 
-for (const [name, { desc }] of Object.entries(REACTIONS)) {
+for (const [name, meta] of Object.entries(REACTIONS)) {
     cmd({
         pattern: name,
-        desc: `${desc} (sends an anime reaction image)`,
+        desc: `${meta.desc} (anime reaction)`,
         category: 'fun',
-        react: '🎭',
+        react: meta.emoji || '🎭',
         filename: __filename,
-    }, async (conn, mek, m, { reply, q }) => {
+    }, async (conn, mek, m, { from, reply, q }) => {
         try {
             const { data } = await axios.get(`https://api.waifu.pics/sfw/${name}`, { timeout: 15000 });
-            const target = q ? ` @${q.replace(/[^0-9]/g, '')}` : '';
-            await conn.sendMessage(m.chat, {
+            
+            if (!data?.url) throw new Error('No URL');
+
+            let caption = `${meta.emoji} *${name.toUpperCase()}*`;
+            if (q) caption += `\n${meta.desc} → ${q}`;
+            else caption += `\n${meta.desc}`;
+
+            await conn.sendMessage(from, {
                 image: { url: data.url },
-                caption: q ? `${desc}${target ? ' → ' + q : ''}` : desc,
+                caption: caption
             }, { quoted: mek });
+
         } catch (e) {
-            reply(error('Could not fetch that reaction image right now — try again in a moment.'));
+            console.log(`[${name}] waifu.pics error:`, e.response?.status || e.message);
+            // Fallback to waifu.im or nekos.best if waifu.pics fails for this category
+            try {
+                const fallback = await axios.get(`https://api.waifu.im/search?included_tags=${name}`, { timeout: 10000 });
+                const url = fallback.data?.images?.[0]?.url;
+                if (url) {
+                    return await conn.sendMessage(from, { image: { url }, caption: `${meta.emoji} *${name.toUpperCase()}*` }, { quoted: mek });
+                }
+            } catch {}
+            reply(`*❌ Could not fetch ${name} right now.* Try again in a moment.`);
         }
     });
 }
