@@ -2,11 +2,11 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
 
-let store = {}; // sender -> data
+let store = {};
 
 function getThumb() {
     try {
-        for (const p of ['./media/menu1.png','./media/menu2.png']) {
+        for (const p of ['./media/menu1.png','./media/menu2.png','./media/logo.png']) {
             if (fs.existsSync(p)) return fs.readFileSync(p);
         }
         return null;
@@ -14,118 +14,140 @@ function getThumb() {
 }
 
 async function generateNFToken() {
-    const { data } = await axios.get('https://api.omegatech.app/api/tools/Nftoken?action=generate', { timeout: 30000 });
-    if (data.success && data.data) return data.data;
-    throw new Error('Gen failed');
+    const urls = [
+        'https://api.omegatech.app/api/tools/Nftoken?action=generate',
+        'https://omegatech-api.dixonomega.tech/api/tools/Nftoken?action=generate',
+        'https://api.dixonomega.tech/api/tools/Nftoken?action=generate'
+    ];
+    let lastErr = null;
+    for (const url of urls) {
+        try {
+            const { data } = await axios.get(url, { timeout: 30000 });
+            if (data.success && data.data?.token) return data.data;
+            if (data.token) return data; // some versions return direct
+            lastErr = JSON.stringify(data).slice(0,300);
+        } catch (e) {
+            lastErr = e.response?.data || e.message;
+        }
+    }
+    throw new Error('Gen failed: ' + lastErr);
 }
 
 cmd({
   pattern: "nftoken",
-  alias: ["nft", "netflix"],
+  alias: ["nft", "netflix", "nftok"],
   react: "🎬",
-  desc: "Netflix NFToken Generator",
+  desc: "Netflix NFToken Generator - Omegatech",
   category: "tools",
   use: ".nftoken",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
   try {
+    const pre = prefix || '.'; // FIX undefined bug
     const sender = m.sender;
-    const args = q?.trim().split(' ') || [];
+    const args = q?.trim().split(' ').filter(a=>a) || [];
     const sub = args[0]?.toLowerCase() || '';
 
-    // ===== HANDLE COPY CLICKS =====
-    if (sub === 'copy' && args[1]!== undefined) {
+    if (sub === 'copy') {
         const idx = parseInt(args[1]);
-        const saved = store[from] || store[sender];
-        if (!saved) return reply('⚠️ No token. Do.nftoken first');
+        const saved = store[from] || store[sender] || store['global'];
+        if (!saved) return reply(`⚠️ No token found. Do ${pre}nftoken first`);
         const link = saved.links[idx];
-        if (!link) return reply('❌ Invalid');
+        if (!link || isNaN(idx)) return reply(`❌ Invalid index. Do ${pre}nftoken again`);
         return await conn.sendMessage(from, {
-            text: `*${link.device}*\n\n🔗 Link:\n${link.url}\n\n🔑 Token:\n\`\`\`${saved.token}\`\`\`\n\n_Tap and hold to copy_`,
+            text: `*${link.device}*\n\n🔗 *Link:*\n${link.url}\n\n🔑 *Token:*\n\`\`\`${saved.token}\`\`\`\n\n_Tap and hold to copy token_`,
         }, { quoted: mek });
     }
+
     if (sub === 'token') {
-        const saved = store[from] || store[sender];
-        if (!saved) return reply('⚠️ No token. Do.nftoken first');
+        const saved = store[from] || store[sender] || store['global'];
+        if (!saved) return reply(`⚠️ No token. Do ${pre}nftoken first`);
         return await conn.sendMessage(from, {
             text: `*🔑 NFToken*\n\n\`\`\`${saved.token}\`\`\`\n\n_Tap and hold to copy_`,
         }, { quoted: mek });
     }
 
-    // ===== GENERATE NEW =====
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
     const data = await generateNFToken();
     const token = data.token;
-    const links = data.links?.all || [];
+    const links = data.links?.all || data.links || [];
+
+    if (!token) throw new Error('API returned no token');
+
     store[from] = { token, links, raw: data };
     store[sender] = { token, links, raw: data };
+    store['global'] = { token, links, raw: data };
 
-    let thumb = null;
+    let thumbMsg = null;
     try {
-        const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
         const tb = getThumb();
         if (tb) {
+            const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
             const media = await prepareWAMessageMedia({ image: tb }, { upload: conn.waUploadToServer });
-            thumb = media.imageMessage;
+            thumbMsg = media.imageMessage;
         }
-    } catch {}
+    } catch (e) {
+        console.log('Thumb skip:', e.message);
+    }
 
     const menu = `┏━━〔 🎬 NFToken Generator 〕━━┓
 ┃ 🔑 Token: ${token.substring(0, 35)}...
 ┃ 📱 Devices: ${links.length}
 ┃ 🕐 ${new Date().toLocaleString()}
 ┗━━━━━━━━━━━━━━┛
-📌 Tap a device to copy its link:`;
+📌 Tap a device to open / copy:`;
 
-    // Build buttons from REAL api links
     let buttons = [];
 
-    // PC/Browser -> direct URL button
-    const pc = links.find(l => l.device.toLowerCase().includes('pc') || l.device.toLowerCase().includes('browser'));
+    const pc = links.find(l => l.device?.toLowerCase().includes('pc') || l.device?.toLowerCase().includes('browser') || l.device?.toLowerCase().includes('web'));
     if (pc) {
         buttons.push({ name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: `🖥️ ${pc.device}`, url: pc.url }) });
     }
 
-    // Android -> direct URL
-    const android = links.find(l => l.device.toLowerCase().includes('android'));
+    const android = links.find(l => l.device?.toLowerCase().includes('android'));
     if (android) {
         buttons.push({ name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: `📱 ${android.device}`, url: android.url }) });
     }
 
-    // Other devices as quick_reply that triggers copy logic
     links.forEach((link, i) => {
-        if (link.device.toLowerCase().includes('pc') || link.device.toLowerCase().includes('android')) return; // already added as URL
-        if (buttons.length >= 4) return; // reserve last slot for copy token
+        const low = link.device?.toLowerCase() || '';
+        if (low.includes('pc') || low.includes('browser') || low.includes('web') || low.includes('android')) {
+            if (buttons.length < 2) return; // already added as URL, skip duplicate
+        }
+        if (buttons.length >= 4) return;
         buttons.push({
             name: "quick_reply",
-            buttonParamsJson: JSON.stringify({ display_text: `📺 ${link.device}`, id: `${prefix}nftoken copy ${i}` })
+            buttonParamsJson: JSON.stringify({ display_text: `📺 ${link.device}`, id: `${pre}nftoken copy ${i}` })
         });
     });
 
-    // THIS IS THE FIX FOR BLANK COPY
     buttons.push({
         name: "cta_copy",
         buttonParamsJson: JSON.stringify({ display_text: "🔑 Copy Token", copy_code: token })
     });
 
+    // Limit to 5 buttons max for WhatsApp
+    buttons = buttons.slice(0, 5);
+
     await conn.relayMessage(from, {
         interactiveMessage: {
-            header: { title: "🎬 Netflix NFToken", hasMediaAttachment:!!thumb,...(thumb? { imageMessage: thumb } : {}) },
+            header: {
+                title: "🎬 Netflix NFToken",
+                hasMediaAttachment:!!thumbMsg,
+               ...(thumbMsg? { imageMessage: thumbMsg } : {})
+            },
             body: { text: menu },
             footer: { text: "🔹 Powered by Progress Tech • Omegatech API ✓" },
             nativeFlowMessage: { buttons }
-        },
-        contextInfo: {
-            forwardingScore: 999, isForwarded: true,
-            forwardedNewsletterMessageInfo: { newsletterJid: '120363425282620066@newsletter', serverMessageId: 1, newsletterName: '🥷TECH TOY🧑‍💻™ ✓' }
         }
     }, {});
 
     await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
   } catch (e) {
-    console.error(e);
-    reply(`❌ Failed: ${e.message}`);
+    console.error('NFTOKEN ERROR:', e.stack || e);
+    await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+    reply(`❌ Failed: ${e.message}\nTry again in 10s`);
   }
 });
