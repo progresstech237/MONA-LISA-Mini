@@ -2,8 +2,6 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
 
-const NEWSLETTER_JID = '120363425282620066@newsletter';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
 const API = 'https://api.omegatech.app/api/ai/text2speech-v3';
 
@@ -22,7 +20,7 @@ cmd({
   react: "🎙️",
   desc: "Text to Speech Live3D AI - 6 voices",
   category: "progresstech ai",
-  use: ".tts2 hello world | .tts woman2 hello | .tts man1|I love you",
+  use: ".tts2 hello world |.tts woman2 hello |.tts man1|I love you",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
   try {
@@ -39,18 +37,9 @@ cmd({
     }
     if (rawQ.startsWith(prefix)) rawQ = rawQ.replace(new RegExp(`^${prefix}[a-z0-9-]+\\s*`, 'i'), '').trim();
 
-    const ctx = {
-        forwardingScore: 999, isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_JID,
-            serverMessageId: 1,
-            newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
-        }
-    };
-
     const validVoices = ['woman1','woman2','woman3','man1','man2','man3'];
 
-    if (!rawQ || rawQ.toLowerCase() === 'help' || rawQ.toLowerCase() === 'menu' || rawQ.toLowerCase() === 'list') {
+    if (!rawQ || ['help','menu','list'].includes(rawQ.toLowerCase())) {
         let thumb = null;
         try {
             const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
@@ -70,18 +59,16 @@ cmd({
 ┃ 👨 man1, man2, man3
 ┃
 ┃ *Usage:*
-┃ ${prefix}tts hello world
-┃ ${prefix}tts woman2|Hello my love
-┃ ${prefix}tts man1|Mona Lisa you fine
-┃ ${prefix}tts woman1|Progress Tech is the best
-┗━━━━━━━━━━━━━━┛
-`;
+┃ ${prefix}tts2 hello world
+┃ ${prefix}tts2 woman2|Hello my love
+┃ ${prefix}tts2 man1|Mona Lisa you fine
+┗━━━━━━━━━━━━━━┛`;
 
         const buttons = [
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👩 Woman1", id: `${prefix}tts woman1|Hello, I am woman1 voice from Progress Tech` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👩 Woman2", id: `${prefix}tts woman2|Hello, I am woman2` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👨 Man1", id: `${prefix}tts man1|Hello, I am man1 voice, Progress Tech` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👨 Man2", id: `${prefix}tts man2|This is man2 voice test` }) }
+            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👩 Woman1", id: `${prefix}tts2 woman1|Hello, I am woman1 voice from Progress Tech` }) },
+            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👩 Woman2", id: `${prefix}tts2 woman2|Hello, I am woman2` }) },
+            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👨 Man1", id: `${prefix}tts2 man1|Hello, I am man1 voice` }) },
+            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "👨 Man2", id: `${prefix}tts2 man2|This is man2 voice test` }) }
         ];
 
         return await conn.relayMessage(from, {
@@ -90,8 +77,7 @@ cmd({
                 body: { text: menu },
                 footer: { text: BRAND },
                 nativeFlowMessage: { buttons }
-            },
-            contextInfo: ctx
+            }
         }, {});
     }
 
@@ -100,7 +86,6 @@ cmd({
     let voice = "woman1";
     let text = rawQ;
 
-    // Parse voice|text or voice text
     if (rawQ.includes('|')) {
         const parts = rawQ.split('|');
         let maybeVoice = parts[0].trim().toLowerCase();
@@ -116,68 +101,44 @@ cmd({
         }
     }
 
-    if (!text) return reply(`*❌ No text*\nExample: ${prefix}tts woman1|Hello world`);
+    if (!text) return reply(`*❌ No text*\nExample: ${prefix}tts2 woman1|Hello world`);
 
-    reply(`*🎙️ Generating speech...*\nVoice: *${voice}*\nText: ${text.slice(0,80)}\n\n_${BRAND}_`);
+    await conn.sendMessage(from, { text: `*🎙️ Generating speech...*\nVoice: *${voice}*\nText: ${text.slice(0,80)}` }, { quoted: mek });
 
-    // Try POST first as per your screenshot GET+POST Working
     let audioUrl = null;
 
     try {
-        const { data } = await axios.post(API, {
-            text: text,
-            voice: voice,
-            language: "English"
-        }, { timeout: 60000, headers: { 'Content-Type': 'application/json' } });
-
+        const { data } = await axios.post(API, { text, voice, language: "English" }, { timeout: 60000, headers: { 'Content-Type': 'application/json' } });
         audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url || data.data?.link || data.link || data.data?.audio;
         if (!audioUrl && typeof data.data === 'string' && data.data.startsWith('http')) audioUrl = data.data;
-    } catch (e) {
-        console.log('POST failed, trying GET', e.message);
-    }
+    } catch {}
 
     if (!audioUrl) {
-        // GET fallback: /api/ai/text2speech-v3?text=hello&voice=woman1
-        // Also old route /api/ai/tts?text=hello&voice=woman1
         const urls = [
             `${API}?text=${encodeURIComponent(text)}&voice=${voice}&language=English`,
             `https://api.omegatech.app/api/ai/tts?text=${encodeURIComponent(text)}&voice=${voice}`,
             `${API}?text=${encodeURIComponent(text)}&voice=${voice}`
         ];
-        
         for (const u of urls) {
             try {
                 const { data } = await axios.get(u, { timeout: 60000 });
                 audioUrl = data.data?.url || data.data?.audio_url || data.url || data.audio_url || data.data?.audio || data.audio;
                 if (!audioUrl && typeof data.data === 'string' && data.data.startsWith('http')) audioUrl = data.data;
-                if (!audioUrl && typeof data === 'string' && data.startsWith('http')) audioUrl = data;
                 if (audioUrl) break;
             } catch {}
         }
     }
 
-    if (!audioUrl) {
-        throw new Error('No audio URL returned from API');
-    }
+    if (!audioUrl) throw new Error('No audio URL returned from API');
 
+    // FIXED: Download as buffer then send ONCE as ptt, NO contextInfo = no JID, no Forwarded
+    const audioRes = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 60000 });
+
+    // ONLY ONE SEND - reply with just voice note
     await conn.sendMessage(from, {
-        audio: { url: audioUrl },
+        audio: Buffer.from(audioRes.data),
         mimetype: 'audio/mpeg',
-        ptt: true, // voice note style
-        contextInfo: ctx
-    }, { quoted: mek });
-
-    // Also send as normal audio for download
-    await conn.sendMessage(from, {
-        audio: { url: audioUrl },
-        mimetype: 'audio/mpeg',
-        ptt: false,
-        contextInfo: ctx
-    }, { quoted: mek });
-
-    await conn.sendMessage(from, {
-        text: `*✅ TTS Generated*\n*Voice:* ${voice}\n*Text:* ${text}\n\n*${BRAND}*\n${CHANNEL_LINK}`,
-        contextInfo: ctx
+        ptt: true
     }, { quoted: mek });
 
     await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
