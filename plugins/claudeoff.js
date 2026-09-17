@@ -3,221 +3,134 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const NEWSLETTER_JID = '120363425282620066@newsletter';
-const CHANNEL_LINK = 'https://whatsapp.com/channel/0029Vb7Lk3yAzNbrVaWDOk1P';
-const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
-const API = 'https://api.omegatech.app/api/ai/Claude-Off';
-const SESSION_FILE = './data/claude-off-sessions.json';
+const BRAND = '🔹 Powered by Progress Tech';
+const API = 'https://omegatech-api.dixonomega.tech/api/ai/Claude-Off';
+const SESSION_FILE = path.join(__dirname, '../data/claude-off-sessions.json');
 
-// Ensure data dir
-if (!fs.existsSync('./data')) fs.mkdirSync('./data', { recursive: true });
+try { const dir = path.dirname(SESSION_FILE); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch {}
 
-function loadSessions() {
-    try { if (fs.existsSync(SESSION_FILE)) return JSON.parse(fs.readFileSync(SESSION_FILE,'utf8')); } catch {}
-    return {};
-}
+function loadSessions() { try { if (fs.existsSync(SESSION_FILE)) return JSON.parse(fs.readFileSync(SESSION_FILE,'utf8')); } catch {} return {}; }
 function saveSessions(s) { try { fs.writeFileSync(SESSION_FILE, JSON.stringify(s, null, 2)); } catch {} }
 
 let sessions = loadSessions();
 
-function getThumb() {
-    try {
-        for (const p of ['./media/menu1.png','./media/menu2.png']) {
-            if (fs.existsSync(p)) return fs.readFileSync(p);
-        }
-        return null;
-    } catch { return null; }
-}
-
-async function getFileBuffer(mek, conn) {
-    try {
-        const q = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const doc = q?.documentMessage || q?.imageMessage || mek.message?.documentMessage || mek.message?.imageMessage;
-        if (!doc) return null;
-        const buf = await conn.downloadMediaMessage({ message: q? { documentMessage: doc } : { documentMessage: doc } }).catch(async () => {
-            return await conn.downloadMediaMessage({ message: q? { imageMessage: doc } : { imageMessage: doc } });
-        });
-        const fileName = doc.fileName || 'image.jpg';
-        const mimetype = doc.mimetype || 'image/jpeg';
-        return { buffer: buf, fileName, mimetype };
-    } catch { return null; }
-}
-
 cmd({
   pattern: "claudeoff",
-  alias: ["claude-off", "claudeoffi", "coff"],
+  alias: ["claude-off", "coff"],
   react: "🟣",
-  desc: "Full Claude Official with magic link, files, search, artifacts",
+  desc: "Claude Off Official - magic link auth",
   category: "progresstech ai",
-  use: ".claudeoff auth <email> |.claudeoff <prompt> | reply file.claudeoff analyze this pdf",
+  use: ".claudeoff auth email |.claudeoff verify 698830 |.claudeoff hello",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix }) => {
   try {
-    let rawQ = q || "";
-    const inter = mek.message?.interactiveResponseMessage;
-    if (inter?.nativeFlowResponseMessage?.paramsJson) {
-        try {
-            const p = JSON.parse(inter.nativeFlowResponseMessage.paramsJson);
-            if (p.id) rawQ = p.id.replace(prefix,"").trim();
-        } catch {}
-    }
-    if (mek.message?.listResponseMessage?.singleSelectReply?.selectedRowId) {
-        rawQ = mek.message.listResponseMessage.singleSelectReply.selectedRowId.replace(prefix,"").trim();
-    }
+    let rawQ = (q || "").trim();
     if (rawQ.startsWith(prefix)) rawQ = rawQ.replace(new RegExp(`^${prefix}[a-z-]+\\s*`, 'i'), '').trim();
-
-    const ctx = {
-        forwardingScore: 999, isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: NEWSLETTER_JID,
-            serverMessageId: 1,
-            newsletterName: '🥷TECH TOY🧑‍💻™ ✓'
-        }
-    };
-
     const userKey = m.sender;
 
+    // AUTH STEP 1: send_magic_link
     if (rawQ.toLowerCase().startsWith('auth ')) {
         const email = rawQ.slice(5).trim();
-        if (!email.includes('@')) return reply(`*❌ Invalid email*\nUsage: ${prefix}claudeoff auth your@gmail.com`);
+        if (!email.includes('@')) return reply(`*❌ Invalid email*\n${prefix}claudeoff auth danielheart12332@gmail.com`);
 
-        await conn.sendMessage(from, { react: { text: "🔗", key: mek.key } });
-        reply(`*🔗 Authenticating Claude Off...*\nEmail: ${email}\nCheck your inbox for magic link`);
+        await conn.sendMessage(from, { react: { text: "📧", key: mek.key } });
+        await reply(`*📧 Sending code to ${email}...*`);
 
         try {
-            const { data } = await axios.post(API, {
-                action: "auth",
-                email: email,
-                mode: "magic_link"
-            }, { timeout: 60000, headers: { 'Content-Type': 'application/json' } });
+            const url = `${API}?action=send_magic_link&email=${encodeURIComponent(email)}`;
+            const { data } = await axios.get(url, { timeout: 30000 });
 
-            const sessionId = data.data?.sessionId || data.sessionId || data.data?.session_id || data.session_id;
-            const authUrl = data.data?.authUrl || data.authUrl || data.data?.magic_link;
-
-            if (sessionId) {
-                sessions[userKey] = { sessionId, email, created: Date.now() };
+            // From your screenshot: returns sessionId even on send
+            if (data.success && data.sessionId) {
+                sessions[userKey] = { email, tempSessionId: data.sessionId, verified: false };
                 saveSessions(sessions);
-                return reply(`*✅ Claude-Off Authenticated*\nSessionId saved: ${sessionId.slice(0,20)}...\n\nNow use: ${prefix}claudeoff hello`);
-            }
-            if (authUrl) {
-                return reply(`*📧 Magic Link Sent*\nOpen this link from your email:\n${authUrl}\n\nAfter clicking, send: ${prefix}claudeoff auth ${email}`);
+                return reply(`*✅ Code sent to ${email}*\n*Check inbox - 6 digit code*\n\nNow do:\n*${prefix}claudeoff verify 123456*\n\nTemp Session: ${data.sessionId.slice(0,8)}...`);
             }
             return reply(`*Response:* ${JSON.stringify(data).slice(0,1000)}`);
         } catch (e) {
-            return reply(`*Auth Failed:* ${e.response?.data?.message || e.message}`);
+            return reply(`*❌ Send failed:* ${e.response?.data?.message || e.message}\nURL: ${API}?action=send_magic_link`);
         }
     }
 
-    if (rawQ.toLowerCase() === 'logout' || rawQ.toLowerCase() === 'clear' || rawQ.toLowerCase() === 'reset') {
+    // AUTH STEP 2: verify_magic_link - THIS IS WHAT YOU MISSED
+    if (rawQ.toLowerCase().startsWith('verify ')) {
+        const code = rawQ.slice(7).trim();
+        if (!sessions[userKey]?.email) return reply(`*❌ No email found.* Do ${prefix}claudeoff auth your@gmail.com first`);
+        if (code.length!== 6) return reply(`*❌ Code must be 6 digits.* You sent: ${code}`);
+
+        const email = sessions[userKey].email;
+        await reply(`*🔐 Verifying code ${code} for ${email}...*`);
+
+        try {
+            const url = `${API}?action=verify_magic_link&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
+            const { data } = await axios.get(url, { timeout: 30000 });
+
+            // Final sessionId after verify
+            const finalSessionId = data.sessionId || data.data?.sessionId || data.session_id;
+            if (finalSessionId) {
+                sessions[userKey] = { email, sessionId: finalSessionId, verified: true, created: Date.now() };
+                saveSessions(sessions);
+                return reply(`*✅ VERIFIED!*\n*Session saved: ${finalSessionId.slice(0,15)}...*\n\nNow chat:\n${prefix}claudeoff hello\n${prefix}claudeoff what is AI?`);
+            }
+            // Some APIs return success but sessionId in same temp
+            if (data.success) {
+                sessions[userKey].verified = true;
+                sessions[userKey].sessionId = sessions[userKey].tempSessionId || data.sessionId;
+                saveSessions(sessions);
+                return reply(`*✅ Verified!* You can now chat:\n${prefix}claudeoff hello`);
+            }
+
+            return reply(`*Verify response:* ${JSON.stringify(data).slice(0,1000)}`);
+        } catch (e) {
+            return reply(`*❌ Verify failed:* ${e.response?.data?.message || e.response?.data?.error || e.message}\nCode might be expired. Do ${prefix}claudeoff auth again`);
+        }
+    }
+
+    if (['logout','clear','reset'].includes(rawQ.toLowerCase())) {
         delete sessions[userKey];
         saveSessions(sessions);
-        return reply(`*✅ Session cleared*\nRe-auth with ${prefix}claudeoff auth <email>`);
+        return reply(`*✅ Logged out.* Do ${prefix}claudeoff auth email again`);
     }
 
     if (!rawQ) {
-        let thumb = null;
-        try {
-            const { prepareWAMessageMedia } = require('@whiskeysockets/baileys');
-            const tb = getThumb();
-            if (tb) {
-                const media = await prepareWAMessageMedia({ image: tb }, { upload: conn.waUploadToServer });
-                thumb = media.imageMessage;
-            }
-        } catch {}
-
-        const hasSession =!!sessions[userKey];
-        const menu = `┏━━〔 🟣 Claude-Off Official 〕━━┓
-┃ Full Claude with Magic Link
-┃ ${hasSession? '✅ Authenticated' : '❌ Not Authenticated'}
-┃
-┃ Features:
-┃ • Chat with streaming
-┃ • Upload PDFs / images / docs
-┃ • Web search & artifacts
-┃ • Session-based
-┃
-┃ *Setup (once):*
-┃ ${prefix}claudeoff auth your@gmail.com
-┃
-┃ *Usage after auth:*
-┃ ${prefix}claudeoff what is quantum?
-┃ Reply PDF + ${prefix}claudeoff summarize this
-┃ ${prefix}claudeoff search latest news about AI
-┃ ${prefix}claudeoff logout
-┗━━━━━━━━━━━━━━┛
-`;
-
-        const buttons = [
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: hasSession? "💬 Chat" : "🔗 Auth Login", id: hasSession? `${prefix}claudeoff Hello` : `${prefix}claudeoff auth ` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "📄 Upload PDF", id: `${prefix}claudeoff analyze this file` }) },
-            { name: "quick_reply", buttonParamsJson: JSON.stringify({ display_text: "🌐 Web Search", id: `${prefix}claudeoff search latest tech news` }) },
-            { name: "cta_url", buttonParamsJson: JSON.stringify({ display_text: "📢 TECH TOY Channel", url: CHANNEL_LINK }) }
-        ];
-
-        return await conn.relayMessage(from, {
-            interactiveMessage: {
-                header: { title: "🟣 Claude Off • Official Client", hasMediaAttachment:!!thumb,...(thumb? { imageMessage: thumb } : {}) },
-                body: { text: menu },
-                footer: { text: BRAND },
-                nativeFlowMessage: { buttons }
-            },
-            contextInfo: ctx
-        }, {});
+        const s = sessions[userKey];
+        return reply(`*🟣 Claude-Off Menu*\n\nStatus: ${s?.verified? `✅ Verified as ${s.email}` : s?.email? `⏳ Code sent to ${s.email}, verify now` : '❌ Not authed'}\n\n*Setup:*\n1. ${prefix}claudeoff auth your@gmail.com\n2. Check email code (like 698830)\n3. ${prefix}claudeoff verify 698830\n\n*Chat:*\n${prefix}claudeoff what is quantum?\n${prefix}claudeoff create_conversation\n${prefix}claudeoff get_conversations\n${prefix}claudeoff logout`);
     }
 
-    // Need session
-    if (!sessions[userKey]?.sessionId) {
-        return reply(`*❌ Not authenticated*\nFirst do:\n${prefix}claudeoff auth your@gmail.com\n\nThen check email magic link, then try again.`);
-    }
+    // CHAT
+    const sess = sessions[userKey];
+    if (!sess?.sessionId &&!sess?.tempSessionId) return reply(`*❌ Not authed.*\n1. ${prefix}claudeoff auth your@gmail.com\n2. ${prefix}claudeoff verify <code from email>`);
+
+    const sessionId = sess.sessionId || sess.tempSessionId;
 
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-    const fileData = await getFileBuffer(mek, conn);
-    const sessionId = sessions[userKey].sessionId;
+    try {
+        // chat = create new conversation + send message
+        const url = `${API}?action=chat&sessionId=${encodeURIComponent(sessionId)}&prompt=${encodeURIComponent(rawQ)}`;
+        const { data } = await axios.get(url, { timeout: 90000 });
 
-    let payload = {
-        action: "chat",
-        prompt: rawQ,
-        message: rawQ,
-        text: rawQ,
-        sessionId: sessionId,
-        session_id: sessionId,
-        query: rawQ,
-        mode: "chat",
-        stream: false,
-        search: rawQ.toLowerCase().includes('search') || rawQ.toLowerCase().includes('latest'),
-        artifacts: true
-    };
+        const answer = data.response || data.message || data.result || data.data?.response || JSON.stringify(data).slice(0,3000);
+        const convoId = data.conversationId || data.conversation_id;
 
-    if (fileData) {
-        payload.file_base64 = fileData.buffer.toString('base64');
-        payload.fileName = fileData.fileName;
-        payload.mimetype = fileData.mimetype;
-        payload.file = `data:${fileData.mimetype};base64,${payload.file_base64}`;
-        payload.action = "upload_and_chat";
-        reply(`*📎 File detected:* ${fileData.fileName} - uploading...`);
+        let txt = `*🟣 Claude-Off*\n\n${answer}\n\n${BRAND}`;
+        if (convoId) {
+            // save convo for continue
+            sess.lastConversationId = convoId;
+            saveSessions(sessions);
+            txt += `\n\n*ConvoID:* ${convoId.slice(0,8)}...`;
+        }
+
+        await conn.sendMessage(from, { text: txt }, { quoted: mek });
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+        console.error('Chat err', e.response?.data || e.message);
+        reply(`*❌ Chat failed:* ${e.response?.data?.message || e.message}\nIf session expired, do auth again.`);
     }
 
-    const { data } = await axios.post(API, payload, {
-        timeout: 120000,
-        headers: { 'Content-Type': 'application/json' }
-    });
-
-    let answer = data.data?.result || data.data?.response || data.result || data.response || data.answer || data.message;
-    const artifactUrl = data.data?.artifact_url || data.artifact_url;
-    const webResults = data.data?.web_search || data.web_search;
-
-    if (typeof answer!== 'string') answer = JSON.stringify(answer || data).slice(0,4000);
-
-    let finalText = `*🟣 Claude-Off*\n\n${answer}\n\n${BRAND}`;
-    if (artifactUrl) finalText += `\n\n*📦 Artifact:* ${artifactUrl}`;
-    if (webResults) finalText += `\n\n*🌐 Web:* searched`;
-
-    await conn.sendMessage(from, { text: finalText, contextInfo: ctx }, { quoted: mek });
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
   } catch (e) {
-    console.error('Claude-Off Error:', e.response?.data || e.message);
-    reply(`*❌ Claude-Off Failed*\n${e.response?.data?.message || e.message}\n\nIf session expired, do ${prefix}claudeoff auth <email> again`);
+    console.error(e);
+    reply(`*❌ Error:* ${e.message}`);
   }
 });
