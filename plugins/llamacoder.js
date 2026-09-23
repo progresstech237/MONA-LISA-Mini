@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
