@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const crypto = require('crypto');
 cmd({
   pattern: "dino",
