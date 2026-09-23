@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
