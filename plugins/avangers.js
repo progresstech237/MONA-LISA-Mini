@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const axios = require('axios');
 
 const API = 'https://omegatech-api.dixonomega.tech/api/Maker/avengers';
@@ -8,7 +8,7 @@ cmd({
   alias: ["avlogo", "avenger", "marvelogo"],
   react: "🦸",
   desc: "Generate Avengers-style logo - TextPro - /api/Maker/avengers",
-  category: "maker",
+  category: "fun",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
   try {
