@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const axios = require('axios');
 const FormData = require('form-data');
 
@@ -34,7 +34,7 @@ cmd({
   alias: ["ftweet", "tweet", "fakex", "xtweet"],
   react: "🐦",
   desc: "Generate Fake Tweet image - verified badge - /api/Maker/fake-tweet",
-  category: "maker",
+  category: "fun",
   filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
   try {
