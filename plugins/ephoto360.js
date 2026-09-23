@@ -1,4 +1,4 @@
-const { cmd } = require('../../redx');
+const { cmd } = require('../redx');
 const axios = require('axios');
 
 const API = 'https://omegatech-api.dixonomega.tech/api/Maker/Ephoto';
