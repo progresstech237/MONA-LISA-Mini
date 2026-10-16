@@ -1,0 +1,25 @@
+# Render Blueprint — New + → Blueprint → pick this repo.
+# NOTE: the free plan sleeps after 15 minutes without web traffic. KEEP_ALIVE
+# plus a free external monitor on /ping is what keeps it up (see README).
+services:
+  - type: web
+    name: mona-lisa-mini
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev --no-audit --no-fund
+    startCommand: node index.js
+    healthCheckPath: /ping
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: KEEP_ALIVE
+        value: "true"
+      - key: OWNER_NUMBER
+        value: "237682432296"
+      - key: MONGODB_URI      # required: free Render disks are wiped on every restart
+        sync: false
+      - key: AI_API_KEY       # optional
+        sync: false
+      - key: STABILITY_API_KEY # optional
+        sync: false
