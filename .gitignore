@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.session
+*.session.json
+auth/
+sessions/
+creds.json
+
+# Runtime data & temp media
+tmp/
+temp/
+*.log

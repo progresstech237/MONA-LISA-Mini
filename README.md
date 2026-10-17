@@ -28,7 +28,7 @@ If you obtained this template from somewhere else and plan to merge changes back
 - **Plugin-based command system** (`plugins/*.js`), auto-loaded at startup
 - **Channel follow / auto-react / status automation** (clean `lib/system.js`)
 - **Anti-link, anti-bad-words, anti-call, anti-delete** (two of these — anti-link and anti-bad-words — were completely broken before this rebuild; see "Bugs fixed" below)
-- **AI / Image / Video / Music provider architecture** (`providers/`) — real adapters, gated behind your own API keys, that clearly explain what's missing rather than faking success
+- **AI / Image / Video / Music provider architecture** (`providers/`, `lib/omegatech.js`) — backed by the free OmegaTech API (no key required), with automatic fallbacks so a single provider outage does not disable a feature
 - **MONA LISA personality system** (`lib/responses.js`) — reusable success/error/loading/warning message pools any plugin can use
 - **Redesigned command menu** (`.menu`) grouped into elegant categories
 - **New Fun & Entertainment commands** with local content pools (jokes, facts, quotes, trivia, would-you-rather, compliments, riddles, coinflip, dice, 8-ball)
@@ -66,7 +66,7 @@ Pinned to this exact version. Checked against the official migration guide: `fet
 | Antidelete only ever sent a text label like "🖼️ Image" for deleted media — never the actual file | Owners never actually saw what was deleted, just that something was | Now attempts to re-download and forward the real image/video/audio/sticker/document (can still fail if WhatsApp already evicted it from its CDN — that's a platform limit, not a bug) |
 | No edited-message detection existed at all, despite `.antiedit` being expected | Edits were invisible | Added `lib/antiedit.js`, wired into the same `messages.update` stream antidelete already uses, reporting before/after text to the owner |
 | 9 game plugins (`car`, `dino`, `fopply`, `fruit`, `ludo`, `ninja`, `shooter`, `snake`, `sonic`) and `penalty` used `require('../../redx')` | Wrong path — none of these could ever load | Fixed to `../redx` |
-| `providers/` folder missing from the repo | `ai-studio.js` (`.ai`, `.translate`, `.genvideo`, `.freeimagine`, ...) failed to load | Restored `providers/ai`, `providers/video`, `providers/pollinations` |
+| `providers/` folder missing from the repo | `ai-studio.js` (`.ai`, `.translate`, `.genvideo`, `.freeimagine`, ...) failed to load | Added `providers/ai`, `providers/video`, `providers/pollinations`, all wired to OmegaTech |
 | 11 plugins request `prefix` and `.online` requests `fromMe`, but the dispatcher never provided them | Help text showed `undefinedephoto`, `undefinedantibad`...; `.online` permission check misbehaved | Added both to all three dispatch contexts |
 | Old channel JID/link hardcoded in 13 files | Wrong channel everywhere | Replaced with the new channel in code, README and `.env.example` |
 
@@ -85,10 +85,11 @@ Pinned to this exact version. Checked against the official migration guide: `fet
 ├── pair.html              # pairing web UI
 ├── plugins/               # all commands, auto-loaded
 ├── providers/              # AI / Image / Video / Music adapters
-│   ├── ai/       (chat, translate, summarize, code help — any OpenAI-compatible endpoint)
-│   ├── stability/ (image generate/upscale/edit/control, 3D, audio — real Stability AI v2beta API)
-│   └── video/      (text-to-video / image-to-video via Replicate — Stability's own video API is deprecated)
+│   ├── ai.js       (chat, translate, summarize, code help — OmegaTech chat API)
+│   ├── pollinations.js (free text-to-image, returns raw bytes)
+│   └── video.js    (text-to-video / image-to-video via OmegaTech)
 ├── lib/                    # shared helpers (message parsing, responses, anti-call, ...)
+│   └── omegatech.js        # OmegaTech API client (chat, image gen/edit, music, upload)
 ├── data/                   # presence/runtime helpers
 ├── .env.example
 └── app.json                # one-click Heroku-style deploy config
@@ -147,41 +148,70 @@ Then open `http://localhost:3000` in a browser, enter your WhatsApp number, and 
 
 > **Channel settings:** the default channel is set in `config.js`, but `CHANNEL_JID` / `CHANNEL_LINK` in your host's Variables or `.env` **override** it. If you previously set them, update or delete them.
 
-## 🧠🎨🎬🎵 Configuring AI / Image / Video / Music
+## 🧠🎨🎬🎵 OmegaTech AI suite (no API key needed)
 
-- **AI chat / translate / summarize / code** (`.ai .translate .summarize .code`) — any OpenAI-compatible endpoint, via `providers/ai/`.
-- **Image generation, upscaling, editing, control, and 3D** — real Stability AI v2beta endpoints, via `providers/stability/`. One key (`STABILITY_API_KEY`) unlocks all of:
-  - Generate: `.imagine` (Stable Image Ultra), `.core` (Stable Image Core), `.sd35` (SD 3.5 Large/Large Turbo/Medium/Flash)
-  - Upscale: `.upscale` (fast 4x), `.upscalehd` (conservative, up to 4MP), `.upscalecreative` (AI reimagining)
-  - Edit (reply to an image): `.removebg`, `.outpaint`, `.searchreplace`, `.recolor`, `.relight`
-  - Control (reply to an image): `.sketch2img`, `.structure2img`, `.styleguide`
-  - 3D (reply to an image): `.to3d`, `.to3dhq` — returns a `.glb` file
-  - Audio: `.genmusic` (text-to-audio), `.audio2audio` (reply to audio to restyle it)
-- **Text-to-video** (`.genvideo`) and **image-to-video** (`.img2video`) — via `providers/video/`, on Replicate. Default models in `.env.example`: `wan-video/wan-2.2-t2v-fast` (`REPLICATE_T2V_MODEL`) and `wan-video/wan-2.2-i2v-fast` (`REPLICATE_I2V_MODEL`) — fast, cheap, and their exact input field names (`prompt`, and `image`+`prompt`) were confirmed against Replicate's own blog post announcing them, not guessed. They're separate models/env vars because Wan's text-only and image+text variants are genuinely different endpoints, not one model that just ignores `image` when absent. This is *not* Stability — Stability deprecated their own Stable Video Diffusion API in July 2025, per their own release notes, so there's no current Stability video endpoint to wire up.
-- **Talking avatar** (`.talkingavatar` / `.speak`) — reply to a portrait photo with the exact words you want spoken, get back an MP4 of that person saying them, lips synced to real generated speech. This is a genuinely different capability from `.genvideo`/`.img2video` — neither text-to-video nor image-to-video above reliably produces accurate spoken dialogue, only general motion. Configured via `REPLICATE_AVATAR_MODEL` (defaults to `prunaai/p-video-avatar` in `.env.example`), verified against that model's documented input contract (`image`, `voice_script`, `voice_prompt`, `video_prompt`).
+All AI features are backed by **OmegaTech** (`https://api.omegatech.app`, attribution `@Omegatech-01`). No API key or signup is required — the client lives in `lib/omegatech.js` and is shared by every command below.
 
-**Not wired to a chat command (but implemented in `providers/stability/image.js` if you want to build a flow for them):** Erase and Inpaint both require a separate mask image, and Style Transfer requires two images — none of these fit cleanly into a single WhatsApp message/reply, so they're left as library functions rather than half-usable commands.
+| Command | What it does | Returns on WhatsApp |
+|---|---|---|
+| `.aiimage <prompt>` | Text-to-image | Real image file |
+| `.aimusic <prompt>` | Text-to-music | Real MP3 audio (falls back to generated lyrics if every audio backend is busy) |
+| `.editimage <prompt>` | Reply to (or caption) an image and describe the change | Real PNG file |
+| `.omega <prompt>` | Chat with the AI models | Text |
+| `.imagetoprompt` | Reply to an image | Detailed description / reusable prompt |
+| `.aimodels` | Lists chat models, image models, ratios and usage | Text |
 
-**On the Stable Audio model slug:** `/v2beta/audio/{model}/text-to-audio` is a confirmed, documented pattern for Stable Audio 2.x. Stability released Stable Audio 3.0 very recently (per the release notes you provided); the exact model slug for 3.0 wasn't independently verified while building this, so `STABILITY_AUDIO_MODEL` defaults to the confirmed `stable-audio-2` — switch it once you've checked platform.stability.ai/docs/api-reference yourself.
+**Image options:** add a ratio (`1:1`, `9:16`, `16:9`, `3:4`, `4:3`, `2:3`, `3:2`) and/or `--model <key>`:
 
-**On Nano Banana / Veo 3:** these are proprietary, vendor-specific models needing their own official API access (Google, for Veo 3) — outside what a generic adapter can respons­ibly wire up without real credentials to test against.
+```
+.aiimage 16:9 a futuristic city at sunset --model cinematic
+.aiimage a cute robot --model anime
+```
+
+Image model keys: `flux2`, `flux2pro`, `realistic`, `cinematic`, `anime`, `illustration`, `disney`, `chalk`, `zimage`.
+
+**Chat model keys:** `standard`, `deepseek`, `gemini`, `gemma`, `llama`, `oss`, `gpt5nano`, `gpt-5`, `chatgpt`, `claude`, `perplexity`:
+
+```
+.omega --model claude write a short poem about the moon
+```
+
+**How image editing works:** the bot uploads the image you sent to a temporary public host (`Pone.rs` / `Kappa.lol` / `Top4top` / `shz.al`, tried in order), sends that URL + your instruction to the edit model (`NanoBanana` first, then `NanoBanana 2`, `Qwen`, `Flux Pro`, `GPT Image`), downloads the result and converts it to a real PNG before sending it back.
+
+**Channel attribution:** the configured channel (`CHANNEL_JID`, default `120363431455356251@newsletter`) is attached to result and menu messages only — never to transient loading messages or reactions, so it appears on some messages, not all.
+
+**Environment (all optional):**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OMEGATECH_API` | `https://api.omegatech.app` | Override the API base URL |
+| `OMEGATECH_TIMEOUT` | `120000` | Per-request timeout in ms |
+| `OMEGA_CHAT_MODEL` | `deepseek-v3.2` default on the API | Default model for `.ai` / `.translate` / `.summarize` / `.code` |
+
+The other AI commands from `ai-studio.js` are wired to the same service: `.ai`, `.translate`, `.summarize`, `.code`, `.freeimagine`, `.genvideo` (text-to-video via `/api/ai/Txt2video`) and `.img2video` (image-to-video).
+
+Talking-avatar lip-sync (`.talkingavatar`) is **not** offered by OmegaTech, so that command reports clearly that it is unavailable instead of pretending to work.
 
 
 ---
 
 ## 📜 Command menu
 
-Send `.menu` to the bot to see the full, categorized command list, generated live from whatever plugins are actually loaded (so it never goes stale). 354 unique commands as of this build, across AI, Image/3D/Audio Studio (Stability AI), video (Replicate), fun/games, an anime-reaction set (nekos.best/waifu.pics), a virtual economy game, audio effects (local ffmpeg), dev/security utilities, passive recon tools, group management, and owner tools.
+Send `.menu` to the bot to see the full, categorized command list, generated live from whatever plugins are actually loaded (so it never goes stale). **225 commands / 463 names including aliases** as of this build, across AI (OmegaTech), image/video/music, fun/games, an anime-reaction set (nekos.best/waifu.pics), a virtual economy game, audio effects (local ffmpeg), dev/security utilities, passive recon tools, group management, and owner tools.
 
-**Deliberately not included, on request in this project's history:** anything routed through the "Dixomega/Omegatech" aggregator (recaptcha-bypass channel reactions, TikTok engagement boosting, WhatsApp/social "stalk" profile lookups, paywall-circumvention scrapers), active vulnerability/port scanning against arbitrary targets, real threat-intel/reputation lookups (would need paid API keys not provided), URL-cloaking, temp-phone-number SMS bypass, arbitrary remote-code plugin installation, and a fake premium/license system. Each of these was evaluated and explained on its own merits during development — see the conversation history for the specific reasoning per item.
+**Not included:** active vulnerability/port scanning against arbitrary targets, real threat-intel/reputation lookups (would need paid API keys not provided), URL-cloaking, temp-phone-number SMS bypass, arbitrary remote-code plugin installation, and a fake premium/license system. This build *does* use the OmegaTech API for the AI/image/music features the owner requested; other OmegaTech routes (channel engagement boosting, social "stalk" lookups) are still not wired to any command.
 
 ---
 
 ## 🧪 What was and wasn't tested
 
-**Verified in this build** (no network/WhatsApp available in the build environment): every JS file passes a syntax check; every file loads with external packages stubbed (78/78 clean); every `require()` is declared in `package.json`; every name imported from a local module is really exported; the runtime command registry has **209 commands / 432 names including aliases with zero duplicates** and every command has a handler; the menu renders; every context field plugins request is provided by the dispatcher (except harmless unused ones).
+**Verified in this build** (Node 22): every JS file passes a syntax check; all **58/58 plugins load cleanly**; the command registry has **225 commands / 463 names including aliases with zero collisions** and every command has a handler; the menu renders; every context field plugins request is provided by the dispatcher.
 
-**Not testable here, so not verified:** the live WhatsApp pairing/login flow, unlink→relink, MongoDB persistence, anything on Baileys 7.0.0-rc14 at runtime, and every call to a third-party API (Stability, Replicate, Pollinations, nekos/waifu.pics, etc.). The restored `providers/*` are rebuilt from earlier verified designs but not run against live services here. Only login credentials (not WhatsApp's per-chat encryption keys) are backed up to MongoDB; I haven't tested how cleanly messages decrypt right after a restart.
+**Live-tested against OmegaTech during this build:** `.aiimage` (image returned), `.editimage` (real PNG returned, 1024x1024), `.imagetoprompt` (description returned), `.aimusic` (real 4.1 MB MP3 returned), `.omega` (chat reply), `.aimodels`, the upload/download pipeline, text-to-video, and `ai-studio`'s `.ai` / `.code` / `.summarize` / `.freeimagine`.
+
+**Not testable here, so not verified:** the live WhatsApp pairing/login flow, unlink→relink, MongoDB persistence, and anything on Baileys 7.0.0-rc14 at runtime. Every third-party endpoint other than OmegaTech (downloaders, anime reactions, etc.) was outside this build's testing scope. Only login credentials (not WhatsApp's per-chat encryption keys) are backed up to MongoDB.
+
+> **Note on external AI services:** OmegaTech is a free third-party aggregator, so individual routes can be rate-limited or temporarily down. The client retries across multiple backends (image: ArtGen → DreamFace → Flux Pro 2 → Pollinations; edit: NanoBanana → NanoBanana 2 → Qwen → Flux Pro → GPT Image; music: sonu3 → Remusic v2 → aisong → sonu4 → Melody-ai, then lyrics) so a single outage does not take a whole feature down.
 
 ## 📢 Official Channel
 
