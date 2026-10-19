@@ -1,5 +1,6 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
+const { sendImage } = require('../lib/media');
 
 cmd({
   pattern: "apk",
@@ -32,7 +33,11 @@ cmd({
 
 *👑 BY :❯ *🥰𝑴𝑶𝑵𝑨 𝑳𝑰𝑺𝑨🤭* MINI BOT 👑*`;
 
-    await conn.sendMessage(from, { image: { url: app.icon }, caption }, { quoted: mek });
+    try {
+      await sendImage(conn, from, { url: app.icon, caption, quoted: mek });
+    } catch {
+      await conn.sendMessage(from, { text: caption }, { quoted: mek });
+    }
 
     await conn.sendMessage(from, {
       document: { url: app.file.path || app.file.path_alt },

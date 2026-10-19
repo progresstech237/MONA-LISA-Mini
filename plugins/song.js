@@ -2,7 +2,7 @@ const { cmd } = require("../redx");
 const fetch = require("node-fetch");
 const yts = require("yt-search");
 const axios = require("axios");
-const { fakevCard } = require('../lib/fakevCard');
+const { sendAudio } = require('../lib/media');
 
 cmd({
 pattern: "song",
@@ -50,29 +50,23 @@ const dlUrl = res.data.result.download.url;
 const meta = res.data.result.metadata;
 const quality = res.data.result.download.quality || "128kbps";
 
-/* 🎵 SEND AUDIO */
-await conn.sendMessage(from, {
-audio: { url: dlUrl },
-mimetype: "audio/mpeg",
-ptt: false,
-fileName: `${meta.title || "song"}.mp3`,
-caption:
-`🎵 *${meta.title || "Unknown Title"}*\n` +
-`🎚️ Quality: ${quality}\n\n` +
-`> © 🥰 MONA LISA 🤭`,
+await sendAudio(conn, from, {
+url: dlUrl,
+quoted: mek,
+fileName: `${(meta && meta.title) || "song"}.mp3`,
 contextInfo: {
 externalAdReply: {
 title: meta.title
 ? meta.title.substring(0, 40)
 : "YouTube Song",
-body: "▶︎ •၊၊||၊|။||||။‌‌‌‌‌၊|• ★彡Progress Tech-ʙᴇᴀᴛꜱ彡★",
+body: "Progress Tech Beats",
 thumbnailUrl: video.thumbnail,
 sourceUrl: video.url,
 mediaType: 1,
 renderLargerThumbnail: true
 }
 }
-}, { quoted: fakevCard });
+});
 
 await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
@@ -128,13 +122,11 @@ cmd({
     if (!_0x5f2691 || _0x5f2691.includes('No')) {
       return _0x5286ec("No downloadable video found.");
     }
-    await _0x291138.sendMessage(_0x3764b7, {
-      'video': {
-        'url': _0x5f2691
-      },
-      'caption': "*❀༒★[Progress Tech]★༒❀*"
-    }, {
-      'quoted': fakevCard
+    const { sendVideo } = require('../lib/media');
+    await sendVideo(_0x291138, _0x3764b7, {
+      url: _0x5f2691,
+      caption: "*Progress Tech*",
+      quoted: _0x40711d,
     });
   } catch (_0x4a5abf) {
     _0x5286ec("Error while fetching video.");

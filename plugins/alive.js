@@ -1,7 +1,7 @@
 const { cmd, commands } = require("../redx");
 const moment = require("moment");
 const config = require("../config");
-const { fakevCard } = require('../lib/fakevCard');
+const { sendImage } = require('../lib/media');
 
 const botStartTime = Date.now();
 
@@ -45,20 +45,25 @@ cmd({
 🎉 *Enjoy the service!*
 `.trim();
 
-        await conn.sendMessage(from, {
-            image: { url: config.IMAGE_PATH },
-            caption,
-            contextInfo: {
-                mentionedJid: [m.sender],
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: config.CHANNEL_JID,
-                    newsletterName: '🥰 MONA LISA 🤭',
-                    serverMessageId: 143,
+        try {
+            await sendImage(conn, from, {
+                url: config.IMAGE_PATH,
+                caption,
+                quoted: mek,
+                contextInfo: {
+                    mentionedJid: [m.sender],
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: config.CHANNEL_JID,
+                        newsletterName: '🥰 MONA LISA 🤭',
+                        serverMessageId: 143,
+                    },
                 },
-            },
-        }, { quoted: fakevCard });
+            });
+        } catch (imgErr) {
+            await conn.sendMessage(from, { text: caption }, { quoted: mek });
+        }
 
     } catch (error) {
         console.error("Error in alive command:", error);

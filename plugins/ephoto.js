@@ -1,5 +1,6 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
+const { sendImage } = require('../lib/media');
 
 const NEWSLETTER_JID = '120363431455356251@newsletter';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
@@ -88,11 +89,12 @@ cmd({
 
     if (!data.success ||!data.result) return reply(`❌ Failed to generate ${type}`);
 
-    await conn.sendMessage(from, {
-      image: { url: data.result },
+    await sendImage(conn, from, {
+      url: data.result,
       caption: `*✨ Ephoto: ${type}*\n*Text:* ${data.text || text}\n${isReplyImage? '*Mode:* Image Reply Edit' : ''}\n\n_${BRAND}_`,
-      contextInfo: ctx
-    }, { quoted: mek });
+      contextInfo: ctx,
+      quoted: mek,
+    });
 
   } catch (e) {
     reply(`❌ Error: ${e.response? JSON.stringify(e.response.data).slice(0,400) : e.message}`);

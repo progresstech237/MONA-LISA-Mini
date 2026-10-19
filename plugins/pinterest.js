@@ -1,6 +1,7 @@
 const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
+const { sendImage } = require('../lib/media');
 
 const NEWSLETTER_JID = '120363431455356251@newsletter';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
@@ -56,11 +57,12 @@ cmd({
     for(let i = 0; i < Math.min(5, data.result.length); i++){
       const item = data.result[i];
       try{
-        await conn.sendMessage(from, {
-          image: { url: item.thumbnail },
+        await sendImage(conn, from, {
+          url: item.thumbnail,
           caption: `*🖼️ ${rawQ} [${i+1}/${Math.min(5, data.result.length)}]*\n\n_${BRAND}_`,
-          contextInfo: ctx
-        }, { quoted: mek });
+          contextInfo: ctx,
+          quoted: mek,
+        });
       }catch{}
     }
 

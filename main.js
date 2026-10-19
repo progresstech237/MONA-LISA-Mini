@@ -21,6 +21,7 @@ const {
 const config = require('./config');
 const { sms } = require('./lib/msg');
 const events = require('./redx');
+const { sendImage } = require('./lib/media');
 
 const {
     connectdb,
@@ -835,13 +836,17 @@ conn.ev.on('connection.update', async (update) => {
 
         if (!existingSession) {
             try {
-                await conn.sendMessage(userJid, {
-                    image: { url: config.IMAGE_PATH || 'https://files.catbox.moe/4dwiou.png' },
-                    caption: connectedMsg
+                await sendImage(conn, userJid, {
+                    url: config.IMAGE_PATH || 'https://files.catbox.moe/4dwiou.png',
+                    caption: connectedMsg,
                 });
                 console.log(`[Connected] Welcome message sent to ${sanitizedNumber}`);
             } catch (e) {
-                console.error('[Connected] Message error:', e.message);
+                try {
+                    await conn.sendMessage(userJid, { text: connectedMsg });
+                } catch (e2) {
+                    console.error('[Connected] Message error:', e2.message);
+                }
             }
         }
     }

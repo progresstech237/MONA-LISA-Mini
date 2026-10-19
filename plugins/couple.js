@@ -2,6 +2,7 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { sendImage } = require('../lib/media');
 
 const NEWSLETTER_JID = '120363431455356251@newsletter';
 const BRAND = '🔹 Powered by Progress Tech • 🥷TECH TOY🧑‍💻™ ✓';
@@ -68,8 +69,8 @@ cmd({
       const cache = getCache();
       if (cache) {
         await conn.sendMessage(from, { text: `⚠️ *Monthly Limit Reached (3/month)*\nShowing cached couple DP from last fetch.`, contextInfo: ctx }, { quoted: mek });
-        await conn.sendMessage(from, { image: { url: cache.male }, caption: `*💙 Male (Cached)*\n\n_${BRAND}_`, contextInfo: ctx }, { quoted: mek });
-        return await conn.sendMessage(from, { image: { url: cache.female }, caption: `*❤️ Female (Cached)*\n\n_${BRAND}_`, contextInfo: ctx }, { quoted: mek });
+        await sendImage(conn, from, { url: cache.male, caption: `*💙 Male (Cached)*\n\n_${BRAND}_`, contextInfo: ctx, quoted: mek });
+        return await sendImage(conn, from, { url: cache.female, caption: `*❤️ Female (Cached)*\n\n_${BRAND}_`, contextInfo: ctx, quoted: mek });
       } else return reply(`❌ *Monthly limit (3/month) reached.* No cache yet. Wait next month.`);
     }
 
@@ -77,8 +78,8 @@ cmd({
       const cache = getCache();
       if (cache) {
         await conn.sendMessage(from, { text: `⚠️ *Daily Limit Reached (3/day)*\nShowing cached result. Resets tomorrow.`, contextInfo: ctx }, { quoted: mek });
-        await conn.sendMessage(from, { image: { url: cache.male }, caption: `*💙 Male (Cached)*`, contextInfo: ctx }, { quoted: mek });
-        return await conn.sendMessage(from, { image: { url: cache.female }, caption: `*❤️ Female (Cached)*`, contextInfo: ctx }, { quoted: mek });
+        await sendImage(conn, from, { url: cache.male, caption: `*💙 Male (Cached)*`, contextInfo: ctx, quoted: mek });
+        return await sendImage(conn, from, { url: cache.female, caption: `*❤️ Female (Cached)*`, contextInfo: ctx, quoted: mek });
       } else return reply(`❌ *Daily limit (3/day) reached.* Try tomorrow.`);
     }
 
@@ -104,8 +105,8 @@ cmd({
     const leftDay = DAILY_LIMIT - limits.day[today];
     const leftMonth = MONTHLY_LIMIT - limits.month;
 
-    await conn.sendMessage(from, { image: { url: data.male }, caption: `*💙 Male DP*\nLeft Today: ${leftDay}/3 | Left Month: ${leftMonth}/3\n\n_${BRAND}_`, contextInfo: ctx }, { quoted: mek });
-    await conn.sendMessage(from, { image: { url: data.female }, caption: `*❤️ Female DP*\nLeft Today: ${leftDay}/3 | Left Month: ${leftMonth}/3\n\n_${BRAND}_`, contextInfo: ctx }, { quoted: mek });
+    await sendImage(conn, from, { url: data.male, caption: `*💙 Male DP*\nLeft Today: ${leftDay}/3 | Left Month: ${leftMonth}/3\n\n_${BRAND}_`, contextInfo: ctx, quoted: mek });
+    await sendImage(conn, from, { url: data.female, caption: `*❤️ Female DP*\nLeft Today: ${leftDay}/3 | Left Month: ${leftMonth}/3\n\n_${BRAND}_`, contextInfo: ctx, quoted: mek });
 
   } catch (e) {
     reply(`❌ Error: ${e.message}`);

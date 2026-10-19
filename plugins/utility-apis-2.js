@@ -9,6 +9,7 @@ const { cmd } = require('../redx');
 const axios = require('axios');
 const QRCode = require('qrcode');
 const { success, error } = require('../lib/responses');
+const { sendImage } = require('../lib/media');
 
 const get = (url, opts = {}) => axios.get(url, { timeout: 15000, ...opts }).then(r => r.data);
 
@@ -42,7 +43,7 @@ cmd({ pattern: "coffee", desc: "Get a random cup-of-coffee photo", category: "fu
     async (conn, mek, m, { reply }) => {
         try {
             const data = await get('https://coffee.alexflipnote.dev/random.json');
-            await conn.sendMessage(m.chat, { image: { url: data.file }, caption: '☕ Enjoy!' }, { quoted: mek });
+            await sendImage(conn, m.chat, { url: data.file, caption: '☕ Enjoy!', quoted: mek });
         } catch (e) {
             reply(error('Could not fetch a coffee photo right now.'));
         }
@@ -63,10 +64,11 @@ cmd({ pattern: "recipe", desc: "Search for a recipe by name", category: "tools",
                 if (ing && ing.trim()) ingredients.push(`• ${measure?.trim() || ''} ${ing.trim()}`.trim());
             }
             const steps = meal.strInstructions.split(/\r?\n/).filter(Boolean).slice(0, 8).join('\n');
-            await conn.sendMessage(m.chat, {
-                image: { url: meal.strMealThumb },
+            await sendImage(conn, m.chat, {
+                url: meal.strMealThumb,
                 caption: success(`🍳 *${meal.strMeal}*\n📍 ${meal.strArea} · ${meal.strCategory}\n\n*Ingredients:*\n${ingredients.join('\n')}\n\n*Steps:*\n${steps}`),
-            }, { quoted: mek });
+                quoted: mek,
+            });
         } catch (e) {
             reply(error('Recipe search failed.'));
         }
@@ -94,10 +96,11 @@ cmd({ pattern: "anime", desc: "Search for anime details", category: "tools", rea
             const data = await get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(q)}&limit=1`);
             const a = data.data?.[0];
             if (!a) return reply(error(`No anime found for "${q}".`));
-            await conn.sendMessage(m.chat, {
-                image: { url: a.images?.jpg?.image_url },
+            await sendImage(conn, m.chat, {
+                url: a.images?.jpg?.image_url,
                 caption: success(`🎌 *${a.title}*\n⭐ Score: ${a.score || 'N/A'}\n📺 Episodes: ${a.episodes || '?'}\n📅 ${a.aired?.string || 'N/A'}\n\n${(a.synopsis || '').slice(0, 400)}${a.synopsis?.length > 400 ? '...' : ''}`),
-            }, { quoted: mek });
+                quoted: mek,
+            });
         } catch (e) {
             reply(error('Anime search failed.'));
         }

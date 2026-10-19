@@ -1,7 +1,7 @@
 const axios = require('axios')
 const yts = require('yt-search')
 const { cmd } = require('../redx')
-const { fakevCard } = require('../lib/fakevCard')
+const { sendImage, sendVideo } = require('../lib/media')
 
 cmd({
 pattern: "videoy",
@@ -39,10 +39,11 @@ const caption = `
 ╰━━━━━━━━━━━━━━⊷
 `
 
-await conn.sendMessage(from,{
-image:{url:vid.thumbnail},
-caption
-},{quoted:fakevCard})
+try {
+await sendImage(conn, from, { url: vid.thumbnail, caption, quoted: mek })
+} catch (_) {
+await conn.sendMessage(from, { text: caption }, { quoted: mek })
+}
 
 /* 🎥 API */
 
@@ -65,11 +66,11 @@ const title = res.data.result.metadata.title || vid.title
 
 /* 🚀 SEND VIDEO DIRECT */
 
-await conn.sendMessage(from,{
-video:{url:videoUrl},
-mimetype:"video/mp4",
-caption:`🎬 *${title}*\n\n> © PROGRESS TECH`
-},{quoted:fakevCard})
+await sendVideo(conn, from, {
+url: videoUrl,
+caption: `🎬 *${title}*\n\n> © PROGRESS TECH`,
+quoted: mek,
+})
 
 }catch(err){
 
